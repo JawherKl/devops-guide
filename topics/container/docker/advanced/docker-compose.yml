@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  web:
+    image: myimage
+    ports:
+      - "80:80"
+    volumes:
+      - my_volume:/app/data
+    networks:
+      - my_network
+
+networks:
+  my_network:
+
+volumes:
+  my_volume:
