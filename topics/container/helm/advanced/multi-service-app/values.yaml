@@ -1,0 +1,22 @@
+web:
+  replicaCount: 2
+  image:
+    repository: nginx
+    tag: "1.21.0"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+
+db:
+  image:
+    repository: postgres
+    tag: "13"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 5432
+  env:
+    POSTGRES_USER: admin
+    POSTGRES_PASSWORD: password
+    POSTGRES_DB: mydb
