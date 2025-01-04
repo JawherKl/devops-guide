@@ -4,7 +4,7 @@ This example demonstrates a basic Jenkins pipeline for a Node.js application.
 
 ## Overview
 
-Jenkins is an open-source automation server that enables developers to build, test, and deploy their software. This example provides a basic configuration for setting up a CI/CD pipeline using Jenkins for a Node.js application.
+Jenkins is an open-source automation server that enables developers to build, test, and deploy their software. This example provides a basic configuration for setting up a CI/CD pipeline using Jenkins for a Node.js application. 
 
 ### Prerequisites
 
