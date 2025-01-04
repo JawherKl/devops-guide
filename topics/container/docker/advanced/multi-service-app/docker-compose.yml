@@ -1,0 +1,27 @@
+version: '3.8'
+services:
+  web:
+    image: my-web-app
+    build: ./web
+    ports:
+      - "5000:5000"
+    depends_on:
+      - redis
+      - db
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

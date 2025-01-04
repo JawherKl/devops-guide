@@ -1,0 +1,28 @@
+version: '3.8'
+services:
+  web:
+    image: my-web-app
+    build: ./web
+    ports:
+      - "5000:5000"
+    networks:
+      - frontend
+
+  api:
+    image: my-api
+    build: ./api
+    networks:
+      - backend
+
+  db:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydb
+    networks:
+      - backend
+
+networks:
+  frontend:
+  backend:
