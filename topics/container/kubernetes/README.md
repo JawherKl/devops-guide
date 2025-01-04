@@ -1,150 +1,311 @@
+## **1. Basics Section**
 
-### Kubernetes
+### **1.1 Pod Definition (`pod.yaml`)**
+**File:** `basics/pod.yaml`  
+**README.md:** `basics/README.md`
 
-This section provides comprehensive guides and tutorials on Kubernetes, covering basics to advanced topics.
+```markdown
+# Kubernetes Pod Example
 
-## Overview
+This example demonstrates how to create a simple Kubernetes Pod running an NGINX container.
 
-Kubernetes is an open-source container orchestration platform that automates the deployment, scaling, and management of containerized applications. This section covers Kubernetes installation, core concepts, basic usage, and advanced topics such as RBAC, networking, and monitoring.
+## Steps to Apply
 
-### Proposed Subsections
+1. Apply the Pod configuration:
+   ```bash
+   kubectl apply -f pod.yaml
+   ```
 
-1. Kubernetes Basics
-2. Kubernetes Advanced Topics
+2. Check the status of the Pod:
+   ```bash
+   kubectl get pods
+   ```
 
-## Kubernetes Basics
+3. View the logs of the Pod:
+   ```bash
+   kubectl logs nginx-pod
+   ```
 
-An introduction to Kubernetes, covering core concepts, installation, and basic usage.
-
-### Core Concepts
-
-- Overview of Kubernetes architecture.
-- Understanding Pods, Nodes, and Clusters.
-
-#### Example
-
-```yaml
-# Pod definition
-apiVersion: v1
-kind: Pod
-metadata:
-  name: mypod
-spec:
-  containers:
-  - name: mycontainer
-    image: myimage
+## Key Concepts
+- **Pod**: The smallest deployable unit in Kubernetes, which can contain one or more containers.
+- **Container**: A lightweight, standalone executable package that includes everything needed to run an application.
+- **Labels**: Key-value pairs used to organize and select resources.
 ```
 
-### Installation
+---
 
-- Installing Kubernetes on various platforms.
-- Setting up a local Kubernetes cluster with Minikube.
+### **1.2 Deployment Definition (`deployment.yaml`)**
+**File:** `basics/deployment.yaml`  
+**README.md:** `basics/README.md`
 
-#### Example
+```markdown
+# Kubernetes Deployment Example
 
-```bash
-# Install Minikube on Ubuntu
-curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-sudo install minikube-linux-amd64 /usr/local/bin/minikube
+This example demonstrates how to create a Kubernetes Deployment to manage multiple replicas of an NGINX application.
 
-# Start Minikube
-minikube start
+## Steps to Apply
+
+1. Apply the Deployment configuration:
+   ```bash
+   kubectl apply -f deployment.yaml
+   ```
+
+2. Check the status of the Deployment:
+   ```bash
+   kubectl get deployments
+   ```
+
+3. Check the Pods created by the Deployment:
+   ```bash
+   kubectl get pods
+   ```
+
+## Key Concepts
+- **Deployment**: Manages a set of identical Pods and ensures the desired number of replicas are running.
+- **Replicas**: The number of Pods that should be running at any given time.
+- **Rolling Updates**: Allows zero-downtime updates to the application.
 ```
 
-### Basic Usage
+---
 
-- Creating and managing Pods.
-- Deployments, Services, and ConfigMaps.
+### **1.3 Service Definition (`service.yaml`)**
+**File:** `basics/service.yaml`  
+**README.md:** `basics/README.md`
 
-#### Example Deployment
+```markdown
+# Kubernetes Service Example
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mydeployment
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: myapp
-  template:
-    metadata:
-      labels:
-        app: myapp
-    spec:
-      containers:
-      - name: mycontainer
-        image: myimage
+This example demonstrates how to create a Kubernetes Service to expose an NGINX Deployment.
+
+## Steps to Apply
+
+1. Apply the Service configuration:
+   ```bash
+   kubectl apply -f service.yaml
+   ```
+
+2. Check the status of the Service:
+   ```bash
+   kubectl get services
+   ```
+
+3. Access the NGINX application:
+   - If using a LoadBalancer, use the external IP provided by the Service.
+   - If using Minikube or a local cluster, use `kubectl port-forward`:
+     ```bash
+     kubectl port-forward svc/nginx-service 8080:80
+     ```
+     Then open `http://localhost:8080` in your browser.
+
+## Key Concepts
+- **Service**: Provides a stable IP address and DNS name for accessing Pods.
+- **LoadBalancer**: Exposes the Service externally using a cloud provider's load balancer.
+- **Port Forwarding**: Allows local access to a Service running in the cluster.
 ```
 
-## Kubernetes Advanced Topics
+---
 
-Explore advanced Kubernetes topics such as RBAC, networking, and monitoring.
+## **2. Advanced Section**
 
-### Role-Based Access Control (RBAC)
+### **2.1 Multi-Container Pod (`pod.yaml`)**
+**File:** `advanced/multi-container-pod/pod.yaml`  
+**README.md:** `advanced/multi-container-pod/README.md`
 
-- Setting up RBAC in Kubernetes.
-- Best practices for managing permissions.
+```markdown
+# Multi-Container Pod Example
 
-#### Example RBAC Configuration
+This example demonstrates how to create a Pod with multiple containers: one for the application and one for a logging sidecar.
 
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  namespace: default
-  name: pod-reader
-rules:
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "watch", "list"]
+## Steps to Apply
+
+1. Apply the Pod configuration:
+   ```bash
+   kubectl apply -f pod.yaml
+   ```
+
+2. Check the status of the Pod:
+   ```bash
+   kubectl get pods
+   ```
+
+3. View the logs of the sidecar container:
+   ```bash
+   kubectl logs multi-container-pod -c log-sidecar
+   ```
+
+## Key Concepts
+- **Multi-Container Pod**: A Pod that runs multiple containers sharing the same network and storage.
+- **Sidecar Pattern**: A helper container that assists the main application container (e.g., logging, monitoring).
+- **Volume**: Shared storage between containers in the same Pod.
 ```
 
-### Networking
+---
 
-- Kubernetes networking model.
-- Configuring Ingress controllers.
+### **2.2 Ingress Resource (`ingress.yaml`)**
+**File:** `advanced/ingress/ingress.yaml`  
+**README.md:** `advanced/ingress/README.md`
 
-#### Example Ingress Configuration
+```markdown
+# Kubernetes Ingress Example
 
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: myingress
-spec:
-  rules:
-  - host: myapp.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: myservice
-            port:
-              number: 80
+This example demonstrates how to create an Ingress resource to route traffic to different services.
+
+## Steps to Apply
+
+1. Apply the Ingress configuration:
+   ```bash
+   kubectl apply -f ingress.yaml
+   ```
+
+2. Check the status of the Ingress:
+   ```bash
+   kubectl get ingress
+   ```
+
+3. Access the application:
+   - Ensure your DNS points to the Ingress controller's IP.
+   - Visit `http://myapp.example.com/app1` and `http://myapp.example.com/app2`.
+
+## Key Concepts
+- **Ingress**: Manages external access to services in a cluster, typically HTTP/HTTPS.
+- **Host-Based Routing**: Routes traffic based on the hostname.
+- **Path-Based Routing**: Routes traffic based on the URL path.
 ```
 
-### Monitoring
+---
 
-- Tools for monitoring Kubernetes clusters.
-- Setting up Prometheus and Grafana for monitoring.
+### **2.3 ConfigMap and Secrets**
+**File:** `advanced/configmap-secrets/configmap.yaml` and `advanced/configmap-secrets/secret.yaml`  
+**README.md:** `advanced/configmap-secrets/README.md`
 
-#### Example Prometheus Configuration
+```markdown
+# ConfigMap and Secrets Example
 
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: Prometheus
-metadata:
-  name: myprometheus
-spec:
-  serviceMonitorSelector:
-    matchLabels:
-      team: frontend
+This example demonstrates how to use ConfigMaps and Secrets to manage configuration and sensitive data in Kubernetes.
+
+## Steps to Apply
+
+1. Apply the ConfigMap:
+   ```bash
+   kubectl apply -f configmap.yaml
+   ```
+
+2. Apply the Secret:
+   ```bash
+   kubectl apply -f secret.yaml
+   ```
+
+3. Verify the resources:
+   ```bash
+   kubectl get configmaps
+   kubectl get secrets
+   ```
+
+## Key Concepts
+- **ConfigMap**: Stores non-sensitive configuration data as key-value pairs.
+- **Secret**: Stores sensitive data (e.g., passwords, tokens) in an encrypted format.
+- **Environment Variables**: Inject ConfigMap and Secret data into Pods as environment variables.
 ```
 
-### Conclusion
+---
 
-This section provides a comprehensive guide to Kubernetes, covering installation, basics, and advanced topics. By following these tutorials and best practices, you will be able to effectively manage containerized applications using Kubernetes.
+### **2.4 StatefulSet (`statefulset.yaml`)**
+**File:** `advanced/statefulsets/statefulset.yaml`  
+**README.md:** `advanced/statefulsets/README.md`
+
+```markdown
+# StatefulSet Example
+
+This example demonstrates how to create a StatefulSet for deploying stateful applications like MySQL.
+
+## Steps to Apply
+
+1. Apply the StatefulSet configuration:
+   ```bash
+   kubectl apply -f statefulset.yaml
+   ```
+
+2. Check the status of the StatefulSet:
+   ```bash
+   kubectl get statefulsets
+   ```
+
+3. Check the Pods and Persistent Volume Claims (PVCs):
+   ```bash
+   kubectl get pods
+   kubectl get pvc
+   ```
+
+## Key Concepts
+- **StatefulSet**: Manages stateful applications with stable network identities and persistent storage.
+- **Persistent Volume (PV)**: Provides durable storage for Pods.
+- **Persistent Volume Claim (PVC)**: Requests storage from a PV.
+```
+
+---
+
+## **3. Real-World Examples**
+
+### **3.1 Kubernetes Deployment with Environment Variables**
+**File:** `advanced/deployment-env/deployment.yaml`  
+**README.md:** `advanced/deployment-env/README.md`
+
+```markdown
+# Deployment with Environment Variables Example
+
+This example demonstrates how to create a Deployment that uses environment variables from a ConfigMap and Secret.
+
+## Steps to Apply
+
+1. Apply the Deployment configuration:
+   ```bash
+   kubectl apply -f deployment.yaml
+   ```
+
+2. Check the status of the Deployment:
+   ```bash
+   kubectl get deployments
+   ```
+
+3. Verify the environment variables in the Pod:
+   ```bash
+   kubectl exec <pod-name> -- env | grep APP_
+   ```
+
+## Key Concepts
+- **Environment Variables**: Pass configuration and sensitive data to containers.
+- **ConfigMap**: Stores non-sensitive configuration data.
+- **Secret**: Stores sensitive data securely.
+```
+
+---
+
+### **3.2 Horizontal Pod Autoscaler (HPA)**
+**File:** `advanced/hpa/hpa.yaml`  
+**README.md:** `advanced/hpa/README.md`
+
+```markdown
+# Horizontal Pod Autoscaler (HPA) Example
+
+This example demonstrates how to create an HPA to automatically scale a Deployment based on CPU usage.
+
+## Steps to Apply
+
+1. Apply the HPA configuration:
+   ```bash
+   kubectl apply -f hpa.yaml
+   ```
+
+2. Check the status of the HPA:
+   ```bash
+   kubectl get hpa
+   ```
+
+3. Generate load to trigger scaling:
+   - Use a tool like `kubectl run` or a load testing tool to increase CPU usage.
+
+## Key Concepts
+- **Horizontal Pod Autoscaler (HPA)**: Automatically scales the number of Pods based on resource usage.
+- **Metrics**: CPU, memory, or custom metrics used for scaling.
+- **Scaling Policies**: Define how scaling should behave (e.g., min/max replicas).
+```
