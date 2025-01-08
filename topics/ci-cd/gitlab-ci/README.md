@@ -106,5 +106,4 @@ deploy:
 These additional examples show how to add environment variables and use Docker as a build environment to optimize your CI/CD pipeline.
 
 ### Conclusion
-
 This guide provides a basic setup for a GitLab CI/CD pipeline for a Node.js application. By customizing the `.gitlab-ci.yml` file, you can tailor the CI/CD process to fit the specific needs of your project.
