@@ -3,7 +3,6 @@
 This example demonstrates a basic GitLab CI/CD pipeline for a Node.js application.
 
 ## Overview
-
 GitLab CI/CD is a continuous integration and continuous delivery tool built into GitLab. It automates the process of building, testing, and deploying your code. This example provides a basic configuration for setting up a CI/CD pipeline using GitLab CI/CD for a Node.js application.
 
 ### Prerequisites
