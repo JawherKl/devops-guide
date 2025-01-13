@@ -13,3 +13,6 @@ Jenkins is an open-source automation server used for continuous integration and 
    ```bash
    sudo apt update
    sudo apt install jenkins
+   ```
+2. Access Jenkins at http://localhost:8080.
+3. Create a new pipeline job.
