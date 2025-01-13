@@ -8,9 +8,9 @@ This section provides a guide to popular DevOps certifications, including their 
 - **Stay updated**: Certifications ensure you are up-to-date with the latest industry practices.
 
 ## Popular Certifications
-1. [AWS Certified DevOps Engineer - Professional](#aws-certified-devops-engineer)
-2. [Certified Kubernetes Administrator (CKA)](#certified-kubernetes-administrator)
-3. [Docker Certified Associate](#docker-certified-associate)
+1. [AWS Certified DevOps Engineer - Professional](aws-certified-devops-engineer)
+2. [Certified Kubernetes Administrator (CKA)](certified-kubernetes-administrator)
+3. [Docker Certified Associate](docker-certified-associate)
 4. [HashiCorp Certified: Terraform Associate](terraform-associate)
 
 ---
