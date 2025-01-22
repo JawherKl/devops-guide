@@ -14,11 +14,9 @@ Explore real-world scenarios that demonstrate effective problem-solving using De
 - [Conclusion](#conclusion)
 
 ## Introduction
-
 This section of the repository is dedicated to providing detailed case studies that illustrate how various DevOps practices can be applied to solve real-world problems. Each case study includes an overview of the problem, the approach taken, the tools and technologies used, and the outcomes achieved.
 
 ## Case Study 1: Continuous Integration and Continuous Deployment (CI/CD)
-
 ### Problem
 The team was facing frequent integration issues and deployment bottlenecks, leading to delays in releasing new features.
 
