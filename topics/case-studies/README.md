@@ -72,7 +72,6 @@ Security vulnerabilities were being identified late in the development process, 
 - Enhanced overall security posture of the applications.
 
 ## Conclusion
-
 These case studies provide valuable insights into the practical application of DevOps practices to solve real-world challenges. By adopting these practices, teams can enhance their efficiency, collaboration, and overall effectiveness in delivering high-quality software.
 
 For more detailed information on each case study, refer to the respective sections above.
