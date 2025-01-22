@@ -3,11 +3,9 @@ Case Studies:
 Add real-world scenarios to demonstrate problem-solving with DevOps practices.
 
 # Case Studies
-
 Explore real-world scenarios that demonstrate effective problem-solving using DevOps practices. These case studies highlight diverse challenges and the innovative solutions employed by teams to overcome them.
 
 ## Table of Contents
-
 - [Introduction](#introduction)
 - [Case Study 1: Continuous Integration and Continuous Deployment (CI/CD)](#case-study-1-continuous-integration-and-continuous-deployment-cicd)
 - [Case Study 2: Infrastructure as Code (IaC)](#case-study-2-infrastructure-as-code-iac)
