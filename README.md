@@ -1,4 +1,5 @@
 # DevOps Guide
+
 ![devops](https://github.com/JawherKl/devops-guide/blob/main/images/devops.png)
 
 Welcome to the **DevOps Guide** repository! This project serves as a comprehensive resource for anyone interested in learning and implementing DevOps practices, tools, and workflows. 
