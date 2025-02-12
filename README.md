@@ -1,5 +1,11 @@
 # DevOps Guide
 
+![Repository Size](https://img.shields.io/github/repo-size/JawherKl/devops-guide)
+![Last Commit](https://img.shields.io/github/last-commit/JawherKl/devops-guide)
+![Issues](https://img.shields.io/github/issues-raw/JawherKl/devops-guide)
+![Forks](https://img.shields.io/github/forks/JawherKl/devops-guide)
+![Stars](https://img.shields.io/github/stars/JawherKl/devops-guide)
+
 ![devops](https://github.com/JawherKl/devops-guide/blob/main/images/devops.png)
 
 Welcome to the **DevOps Guide** repository! This project serves as a comprehensive resource for anyone interested in learning and implementing DevOps practices, tools, and workflows. 
