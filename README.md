@@ -121,5 +121,3 @@ This repository is licensed under the MIT License. See the `LICENSE` file for mo
 
 ## 🌟 Stargazers over time
 [![Stargazers over time](https://starchart.cc/JawherKl/devops-guide.svg?variant=adaptive)](https://starchart.cc/JawherKl/node-api-postgres)
-
-Happy learning and building with DevOps! 🚀
