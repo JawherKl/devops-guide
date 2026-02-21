@@ -1,55 +1,16 @@
-### Containerization and Orchestration
+### Orchestration
 
-This section provides comprehensive guides and tutorials on containerization and orchestration using Docker, Kubernetes, and Helm.
+This section provides comprehensive guides and tutorials on orchestration using Kubernetes, and Helm.
 
 ## Overview
 
-Containerization and orchestration are essential concepts in modern DevOps practices. This section covers the basics and advanced topics of Docker, Kubernetes, and Helm, providing practical examples and best practices.
+Orchestration are essential concepts in modern DevOps practices. This section covers the basics and advanced topics of Kubernetes, and Helm, providing practical examples and best practices.
 
 ### Proposed Subsections
 
-1. Docker Basics
-2. Advanced Docker Topics
-3. Kubernetes Basics
-4. Kubernetes Advanced Topics
-5. Helm Charts and Best Practices
-
-## Docker Basics
-
-Learn the fundamentals of Docker, including installation, creating Dockerfiles, and managing containers.
-
-### Installation
-
-- Step-by-step guide to install Docker on various operating systems.
-
-### Creating Dockerfiles
-
-- How to write Dockerfiles to containerize applications.
-- Examples of Dockerfiles for different programming languages.
-
-### Managing Containers
-
-- Commands to manage Docker containers.
-- Best practices for managing container lifecycles.
-
-## Advanced Docker Topics
-
-Dive deeper into Docker with advanced topics such as networking, volume management, and Docker Compose.
-
-### Networking
-
-- Understanding Docker networking.
-- Configuring bridge and overlay networks.
-
-### Volume Management
-
-- How to manage data with Docker volumes.
-- Persistent storage options for containers.
-
-### Docker Compose
-
-- Writing `docker-compose.yml` files.
-- Multi-container applications with Docker Compose.
+1. Kubernetes Basics
+2. Kubernetes Advanced Topics
+3. Helm Charts and Best Practices
 
 ## Kubernetes Basics
 
@@ -110,4 +71,4 @@ Guides on using Helm to manage Kubernetes applications and best practices for He
 
 ### Conclusion
 
-This section provides a comprehensive guide to containerization and orchestration using Docker, Kubernetes, and Helm. By following the tutorials and best practices, you will be able to effectively manage containerized applications and Kubernetes clusters.
+This section provides a comprehensive guide to orchestration using Kubernetes, and Helm. By following the tutorials and best practices, you will be able to effectively manage containerized applications and Kubernetes clusters.
