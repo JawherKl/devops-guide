@@ -1,4 +1,4 @@
-# Git Workflow Example
+# Git Workflow
 
 ## Feature Branch Workflow
 1. Create a new branch: `git checkout -b feature-branch`
