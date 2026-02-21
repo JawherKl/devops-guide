@@ -1,7 +1,7 @@
-# Merge Request Best Practices Example
+# Pull Request Best Practices
 
 ## Descriptive Titles and Descriptions
-- Use clear and descriptive titles for merge requests.
+- Use clear and descriptive titles for pull requests.
 - Provide detailed descriptions of changes made.
 
 ## Peer Reviews

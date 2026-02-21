@@ -15,8 +15,8 @@ Branching strategies help manage the development process. Some common strategies
 - **Feature Branching**
 - **Release Branching**
 
-## Merge Request Best Practices
-Merge requests (or pull requests) are a critical part of the collaborative development process. Best practices include:
+## Pull Request Best Practices
+Pull requests (or pull requests) are a critical part of the collaborative development process. Best practices include:
 - **Descriptive Titles and Descriptions**
 - **Peer Reviews**
 - **Automated Testing**
@@ -24,4 +24,4 @@ Merge requests (or pull requests) are a critical part of the collaborative devel
 ## Examples
 - [Git Workflow Example](git-workflow-example.md)
 - [Branching Strategy Example](branching-strategy-example.md)
-- [Merge Request Best Practices Example](mr-best-practices-example.md)
+- [Pull Request Best Practices Example](pr-best-practices-example.md)
