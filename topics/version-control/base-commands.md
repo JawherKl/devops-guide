@@ -16,7 +16,7 @@ git config --global init.defaultBranch main
 
 # Editor for commit messages (choose one)
 git config --global core.editor "vim"
-git config --global core.editor "code --wait"    # VS Code
+git config --global core.editor "code --wait"
 git config --global core.editor "nano"
 
 # Default push behaviour: push only the current branch
