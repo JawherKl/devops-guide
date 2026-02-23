@@ -1,0 +1,85 @@
+# =============================================================================
+# compose.override.yml — Development overrides
+# =============================================================================
+#
+# This file is AUTOMATICALLY MERGED with compose.yml during local development.
+# It is NEVER used in production.
+#
+# Development:  docker compose up -d              (merges this file)
+# Production:   docker compose -f compose.yml up -d  (ignores this file)
+#
+# Principle: compose.yml defines the production contract.
+#            This file relaxes constraints and adds convenience for local work.
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # API — switch to dev build stage, mount live source, open debug ports
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      target: development               # use the 'development' stage from Dockerfile
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      DEBUG: "app:*"                    # enable verbose debug namespaces
+    volumes:
+      - ./api/src:/app/src:delegated    # live source reload — edit on host, run in container
+      - /app/node_modules               # anonymous volume: keep container's node_modules intact
+    command: npm run dev                # override CMD — use nodemon/tsx watch instead of node
+    ports:
+      - "3000:3000"                     # expose API directly (no proxy needed in dev)
+      - "9229:9229"                     # Node.js inspector — attach VS Code debugger here
+    # In dev we skip strict health checks so container starts faster
+    healthcheck:
+      interval: 60s
+      retries: 1
+      start_period: 5s
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — expose port so you can connect with pgAdmin, DBeaver, etc.
+  # ---------------------------------------------------------------------------
+  postgres:
+    ports:
+      - "5432:5432"                     # direct DB access from host tools
+    environment:
+      # Simpler password in dev — overrides the .env value locally
+      POSTGRES_PASSWORD: devpassword
+
+  # ---------------------------------------------------------------------------
+  # Redis — expose port so you can inspect with redis-cli or RedisInsight
+  # ---------------------------------------------------------------------------
+  redis:
+    ports:
+      - "6379:6379"
+    # Remove password requirement in dev for easier local testing
+    command: redis-server --loglevel verbose
+
+  # ---------------------------------------------------------------------------
+  # Adminer — lightweight DB UI, dev-only (no profile flag needed here
+  # because this entire file is already dev-only)
+  # ---------------------------------------------------------------------------
+  adminer:
+    image: adminer:latest
+    container_name: myapp-adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    networks:
+      - backend
+    restart: "no"                       # don't auto-restart in dev
+
+  # ---------------------------------------------------------------------------
+  # Mailhog — catch all outbound SMTP in dev, view emails in browser
+  # ---------------------------------------------------------------------------
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: myapp-mailhog
+    ports:
+      - "1025:1025"                     # SMTP — point app SMTP config here
+      - "8025:8025"                     # Web UI — open http://localhost:8025
+    networks:
+      - backend
+    restart: "no"

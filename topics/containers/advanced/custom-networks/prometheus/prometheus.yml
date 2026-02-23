@@ -1,0 +1,23 @@
+# =============================================================================
+# prometheus/prometheus.yml — Metrics scraping for custom-networks demo
+# =============================================================================
+# Prometheus is on the 'monitoring' network.
+# It scrapes the API via the 'frontend' network (api is on both).
+# It has NO access to postgres or redis (backend only).
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: 'demo'
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'netdemo-api'
+    static_configs:
+      - targets: ['api:3000']    # resolved via Docker DNS on shared network
+    metrics_path: '/metrics'

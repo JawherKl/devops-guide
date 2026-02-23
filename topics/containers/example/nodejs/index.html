@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Task Manager</title>
+  <style>
+    /* ── Reset & base ──────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────────── */
+    header {
+      background: linear-gradient(135deg, #2496ed 0%, #1565c0 100%);
+      color: #fff;
+      padding: 1.25rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    header svg { width: 32px; height: 32px; flex-shrink: 0; }
+    header h1  { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.3px; }
+    header p   { font-size: 0.8rem; opacity: 0.85; margin-left: auto; }
+
+    /* ── Layout ─────────────────────────────────────────────────────────────── */
+    main {
+      max-width: 760px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    /* ── Card ───────────────────────────────────────────────────────────────── */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: #333; }
+
+    /* ── Status bar ─────────────────────────────────────────────────────────── */
+    #status-bar {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.82rem;
+      color: #555;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #ccc;
+      flex-shrink: 0;
+    }
+    .dot.ok      { background: #22c55e; }
+    .dot.error   { background: #ef4444; }
+    .dot.loading { background: #f59e0b; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── Form ───────────────────────────────────────────────────────────────── */
+    .form-row   { display: flex; flex-direction: column; gap: 0.6rem; }
+    input, textarea {
+      width: 100%;
+      padding: 0.6rem 0.85rem;
+      border: 1.5px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.15s;
+      font-family: inherit;
+    }
+    input:focus, textarea:focus { border-color: #2496ed; }
+    textarea { resize: vertical; min-height: 70px; }
+
+    button {
+      padding: 0.6rem 1.2rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    button:hover   { opacity: 0.88; }
+    button:active  { transform: scale(0.97); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-primary { background: #2496ed; color: #fff; }
+    .btn-success { background: #22c55e; color: #fff; }
+    .btn-danger  { background: #ef4444; color: #fff; font-size: 0.78rem; padding: 0.35rem 0.7rem; }
+
+    /* ── Task list ──────────────────────────────────────────────────────────── */
+    #task-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+    .task-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.9rem 1rem;
+      border: 1.5px solid #e5e7eb;
+      border-radius: 10px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .task-item:hover     { border-color: #2496ed; background: #f8fbff; }
+    .task-item.done-task { opacity: 0.55; background: #f9fafb; }
+
+    .task-check {
+      width: 20px; height: 20px;
+      border: 2px solid #d1d5db;
+      border-radius: 50%;
+      cursor: pointer;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      margin-top: 2px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .task-check.checked { background: #22c55e; border-color: #22c55e; }
+    .task-check.checked::after { content: '✓'; color: #fff; font-size: 0.7rem; font-weight: 700; }
+
+    .task-body  { flex: 1; min-width: 0; }
+    .task-title { font-weight: 600; font-size: 0.92rem; color: #1a1a2e; word-break: break-word; }
+    .task-desc  { font-size: 0.82rem; color: #666; margin-top: 0.2rem; word-break: break-word; }
+    .done-task .task-title { text-decoration: line-through; color: #999; }
+    .task-meta  { font-size: 0.74rem; color: #aaa; margin-top: 0.35rem; }
+    .task-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
+
+    /* ── Empty state ────────────────────────────────────────────────────────── */
+    .empty {
+      text-align: center;
+      color: #aaa;
+      padding: 2rem 1rem;
+      font-size: 0.9rem;
+    }
+    .empty-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+
+    /* ── Toast ──────────────────────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      background: #1a1a2e;
+      color: #fff;
+      padding: 0.6rem 1.1rem;
+      border-radius: 8px;
+      font-size: 0.84rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s;
+      z-index: 999;
+    }
+    #toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<header>
+  <!-- Docker whale icon -->
+  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M13 7h2v2h-2V7zm-4 0h2v2H9V7zm-4 0h2v2H5V7zm8 4h2v2h-2v-2zm-4 0h2v2H9v-2zm-4 0h2v2H5v-2zm-4 4h2v2H1v-2zm18-4h2v2h-2v-2zM9 3h2v2H9V3zm4 0h2v2h-2V3z" fill="white"/>
+    <path d="M21.9 11.6c-.4-.3-1.2-.4-1.8-.3-.2-.6-.6-1.2-1.2-1.6l-.4-.3-.3.4c-.3.5-.5 1.2-.4 1.8-.1 0-.2.1-.3.2-.3.2-.7.2-1 .2H2.3c-.1.8.1 1.7.5 2.5.5.9 1.2 1.5 2.1 1.9.7.3 1.5.4 2.2.4.5 0 1.1-.1 1.5-.2.8-.2 1.5-.7 2.1-1.3.5.1 1.1.2 1.6.2h.9c.3 0 .5-.1.7-.1l.2-.1c.5-.2.9-.5 1.2-.9.2-.2.4-.5.5-.8.5 0 1.1-.1 1.5-.4.5-.3.8-.7.9-1.2l.1-.4-.4-.1z" fill="white"/>
+  </svg>
+  <h1>Task Manager</h1>
+  <p id="health-label">Checking services...</p>
+</header>
+
+<main>
+
+  <!-- Health status -->
+  <div class="card">
+    <h2>🩺 Service Health</h2>
+    <div id="status-bar">
+      <div class="status-item">
+        <div class="dot loading" id="dot-api"></div>
+        <span>API</span>
+      </div>
+      <div class="status-item">
+        <div class="dot loading" id="dot-postgres"></div>
+        <span>PostgreSQL</span>
+      </div>
+      <div class="status-item">
+        <div class="dot loading" id="dot-redis"></div>
+        <span>Redis</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add task form -->
+  <div class="card">
+    <h2>➕ Add New Task</h2>
+    <div class="form-row">
+      <input id="task-title" type="text" placeholder="Task title *" maxlength="200" />
+      <textarea id="task-desc" placeholder="Description (optional)" maxlength="1000"></textarea>
+      <div>
+        <button class="btn-primary" id="btn-add" onclick="addTask()">Add Task</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task list -->
+  <div class="card">
+    <h2>📋 Tasks <span id="task-count" style="font-weight:400;color:#999;font-size:0.85rem;"></span></h2>
+    <div id="task-list">
+      <div class="empty">
+        <div class="empty-icon">📭</div>
+        <div>Loading tasks...</div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+  const API = '/api';
+  let tasks = [];
+
+  // ── Health check ────────────────────────────────────────────────────────────
+  async function checkHealth() {
+    try {
+      const res  = await fetch(`${API}/health`);
+      const data = await res.json();
+      const set  = (id, status) => {
+        const el = document.getElementById(id);
+        el.className = 'dot ' + (status === 'ok' ? 'ok' : 'error');
+      };
+      set('dot-api',      data.checks?.api);
+      set('dot-postgres', data.checks?.postgres);
+      set('dot-redis',    data.checks?.redis);
+      document.getElementById('health-label').textContent =
+        data.status === 'healthy' ? '✅ All services healthy' : '⚠ Some services degraded';
+    } catch {
+      ['dot-api','dot-postgres','dot-redis'].forEach(id => {
+        document.getElementById(id).className = 'dot error';
+      });
+      document.getElementById('health-label').textContent = '❌ Cannot reach API';
+    }
+  }
+
+  // ── Fetch + render tasks ────────────────────────────────────────────────────
+  async function loadTasks() {
+    try {
+      const res  = await fetch(`${API}/tasks`);
+      const data = await res.json();
+      tasks = data.tasks || [];
+      renderTasks();
+    } catch {
+      document.getElementById('task-list').innerHTML =
+        '<div class="empty"><div class="empty-icon">❌</div><div>Could not load tasks</div></div>';
+    }
+  }
+
+  function renderTasks() {
+    const list = document.getElementById('task-list');
+    const count = document.getElementById('task-count');
+
+    if (!tasks.length) {
+      list.innerHTML = '<div class="empty"><div class="empty-icon">✅</div><div>No tasks yet — add one above!</div></div>';
+      count.textContent = '';
+      return;
+    }
+
+    const done  = tasks.filter(t => t.done).length;
+    count.textContent = `(${tasks.length} total, ${done} done)`;
+
+    list.innerHTML = tasks.map(t => `
+      <div class="task-item ${t.done ? 'done-task' : ''}" id="task-${t.id}">
+        <div class="task-check ${t.done ? 'checked' : ''}"
+             onclick="toggleTask('${t.id}', ${!t.done})"
+             title="${t.done ? 'Mark as todo' : 'Mark as done'}"></div>
+        <div class="task-body">
+          <div class="task-title">${esc(t.title)}</div>
+          ${t.description ? `<div class="task-desc">${esc(t.description)}</div>` : ''}
+          <div class="task-meta">${new Date(t.created_at).toLocaleString()}</div>
+        </div>
+        <div class="task-actions">
+          <button class="btn-danger" onclick="deleteTask('${t.id}')">Delete</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // ── Add task ────────────────────────────────────────────────────────────────
+  async function addTask() {
+    const titleEl = document.getElementById('task-title');
+    const descEl  = document.getElementById('task-desc');
+    const btn     = document.getElementById('btn-add');
+    const title   = titleEl.value.trim();
+
+    if (!title) { toast('Title is required'); titleEl.focus(); return; }
+
+    btn.disabled = true;
+    try {
+      const res = await fetch(`${API}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description: descEl.value.trim() }),
+      });
+      if (!res.ok) { const e = await res.json(); toast(e.error || 'Error'); return; }
+      titleEl.value = '';
+      descEl.value  = '';
+      toast('Task created ✅');
+      await loadTasks();
+    } catch { toast('Network error'); }
+    finally  { btn.disabled = false; }
+  }
+
+  // ── Toggle done ─────────────────────────────────────────────────────────────
+  async function toggleTask(id, done) {
+    try {
+      await fetch(`${API}/tasks/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ done }),
+      });
+      await loadTasks();
+    } catch { toast('Could not update task'); }
+  }
+
+  // ── Delete task ─────────────────────────────────────────────────────────────
+  async function deleteTask(id) {
+    if (!confirm('Delete this task?')) return;
+    try {
+      await fetch(`${API}/tasks/${id}`, { method: 'DELETE' });
+      toast('Task deleted');
+      await loadTasks();
+    } catch { toast('Could not delete task'); }
+  }
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+  function esc(str) {
+    return String(str)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  let toastTimer;
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+  }
+
+  // Allow Enter key to submit form
+  document.getElementById('task-title').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') addTask();
+  });
+
+  // ── Init ────────────────────────────────────────────────────────────────────
+  checkHealth();
+  loadTasks();
+  setInterval(checkHealth, 30_000);   // re-check health every 30s
+</script>
+</body>
+</html>

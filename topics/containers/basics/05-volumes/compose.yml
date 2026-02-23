@@ -1,0 +1,52 @@
+# =============================================================================
+# 05-volumes/compose.yml — Volume patterns demonstration
+# =============================================================================
+# Shows all three volume types in one stack:
+#   named volume   → postgres persistent data
+#   bind mount     → app source for live reload (dev)
+#   tmpfs          → in-memory temp dir for API
+# =============================================================================
+
+name: volumes-demo
+
+services:
+
+  # Named volume — data persists after `docker compose down`
+  postgres:
+    image: postgres:16-alpine
+    container_name: voldemo-postgres
+    environment:
+      POSTGRES_DB: demo
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: devpassword
+    volumes:
+      - postgres_data:/var/lib/postgresql/data    # named volume
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro  # read-only bind mount
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d demo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Bind mount (dev) + tmpfs (sensitive temp space)
+  api:
+    image: node:20-alpine
+    container_name: voldemo-api
+    working_dir: /app
+    command: sh -c "npm install && node index.js"
+    environment:
+      PORT: 3000
+    volumes:
+      - ./app:/app                    # bind mount — edit on host, runs in container
+      - /app/node_modules             # anonymous volume — isolate container's node_modules
+    tmpfs:
+      - /tmp:size=50m                 # in-memory, never touches disk
+      - /run:size=10m
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
