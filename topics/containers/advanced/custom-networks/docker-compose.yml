@@ -1,0 +1,159 @@
+# =============================================================================
+# custom-networks/compose.yml
+# =============================================================================
+# Demonstrates Docker network isolation patterns:
+#
+#   frontend  — bridge, internet-facing (proxy only)
+#   backend   — bridge, internal: true (no internet, DB + cache only)
+#   monitoring — bridge, internal: true (metrics scraping only)
+#
+# Usage:
+#   docker compose up -d
+#   docker compose ps
+#   See README.md Lab section to verify isolation
+# =============================================================================
+
+name: netdemo
+
+services:
+
+  # ── Reverse Proxy ───────────────────────────────────────────────────────────
+  # Only container with published ports.
+  # Connected to frontend only — cannot reach backend directly.
+  proxy:
+    image: nginx:1.25-alpine
+    container_name: netdemo-proxy
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # ── Application API ─────────────────────────────────────────────────────────
+  # Sits on both networks — bridges traffic between proxy and backend.
+  # This is the ONLY container that can talk to postgres and redis.
+  api:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: netdemo-api
+    expose:
+      - "3000"          # internal only — proxy routes to this port
+    environment:
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - frontend        # reachable from proxy
+      - backend         # can reach postgres + redis
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  # Backend only — unreachable from proxy or internet.
+  postgres:
+    image: postgres:16-alpine
+    container_name: netdemo-postgres
+    environment:
+      POSTGRES_DB: netdemo
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: devpassword
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - backend         # backend only — no frontend, no internet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d netdemo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── Redis Cache ─────────────────────────────────────────────────────────────
+  # Backend only — unreachable from proxy or internet.
+  redis:
+    image: redis:7-alpine
+    container_name: netdemo-redis
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend         # backend only
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  # ── Prometheus ──────────────────────────────────────────────────────────────
+  # Monitoring network — scrapes metrics from api and itself.
+  # Demonstrates a third isolated network plane.
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: netdemo-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - monitoring      # monitoring plane — separate from app traffic
+      - frontend        # also on frontend so Grafana can reach it via proxy
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=7d'
+    restart: unless-stopped
+    profiles:
+      - monitoring      # only start with: docker compose --profile monitoring up -d
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  frontend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24   # explicit subnet for predictability
+
+  backend:
+    driver: bridge
+    internal: true                # NO routing to/from internet
+    ipam:
+      config:
+        - subnet: 172.20.1.0/24
+
+  monitoring:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.20.2.0/24
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:

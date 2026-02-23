@@ -1,0 +1,9 @@
+# Ignore specific CVEs
+# go binary in gosu, not impacting gosu
+CVE-2025-58183
+CVE-2025-58186
+CVE-2025-58187
+CVE-2025-61729
+
+# Ignore Trivy-specific vulnerability IDs
+# GHSA-vh95-rmgr-6w4m

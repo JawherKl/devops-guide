@@ -1,0 +1,11 @@
+{
+  "name": "volumes-demo",
+  "version": "1.0.0",
+  "description": "Demonstrates named volumes, bind mounts, and tmpfs from inside a container",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": { "node": ">=20.0.0" },
+  "license": "MIT"
+}

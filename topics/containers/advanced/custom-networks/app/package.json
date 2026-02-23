@@ -1,0 +1,13 @@
+{
+  "name": "netdemo-api",
+  "version": "1.0.0",
+  "description": "Network isolation demo — exercises all inter-container connections",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT"
+}

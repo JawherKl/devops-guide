@@ -1,0 +1,13 @@
+{
+  "name": "dockerfile-demo",
+  "version": "1.0.0",
+  "description": "Minimal Node.js app — Dockerfile basics demo (no dependencies)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT"
+}

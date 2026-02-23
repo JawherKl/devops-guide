@@ -1,0 +1,5 @@
+# requirements.txt — used by basics/03-dockerfile/python.dockerfile
+# Minimal Flask app for the Dockerfile basics demo
+
+flask==3.0.3
+gunicorn==22.0.0

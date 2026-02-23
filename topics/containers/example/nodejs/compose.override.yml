@@ -1,0 +1,56 @@
+# =============================================================================
+# compose.override.yml — Development overrides
+# =============================================================================
+# Auto-merged by Docker Compose during local development.
+# NEVER used in production (docker compose -f compose.yml up -d).
+#
+# What this adds:
+#   - Live source reload via bind mount into the api container
+#   - Node.js debugger port (9229) exposed for VS Code / Chrome DevTools
+#   - postgres and redis ports exposed for direct host tool access
+#   - Adminer (DB admin UI) on port 8080
+# =============================================================================
+
+services:
+
+  api:
+    build:
+      target: development             # use the dev stage (includes nodemon)
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+    volumes:
+      - ./app/src:/app/src:delegated  # bind mount for live reload
+      - /app/node_modules             # keep container's node_modules separate
+    command: npm run dev              # nodemon watch mode
+    ports:
+      - "3000:3000"                   # direct API access (no proxy required in dev)
+      - "9229:9229"                   # Node.js inspector (attach debugger here)
+    healthcheck:
+      interval: 60s                   # relax health check in dev (faster startup)
+      start_period: 5s
+
+  postgres:
+    ports:
+      - "5432:5432"                   # access from host with psql, DBeaver, etc.
+    environment:
+      POSTGRES_PASSWORD: devpassword  # simpler password for local dev
+
+  redis:
+    ports:
+      - "6379:6379"                   # access from host with redis-cli
+    command: redis-server --loglevel verbose   # no password in dev for convenience
+
+  adminer:
+    image: adminer:4
+    container_name: taskapp-adminer
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: pepa-linha
+    depends_on:
+      - postgres
+    networks:
+      - backend
+    restart: "no"

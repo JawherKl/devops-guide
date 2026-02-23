@@ -1,0 +1,98 @@
+# =============================================================================
+# .dockerignore — Shared across all multi-stage build examples
+# =============================================================================
+# Prevents sending unnecessary files to the Docker build context.
+# This directly speeds up builds and prevents accidental secret leakage.
+# =============================================================================
+
+# ── Version control ───────────────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+.github/
+
+# ── Docker files ─────────────────────────────────────────────────────────────
+*.dockerfile
+docker-compose*.yml
+compose*.yml
+.dockerignore
+
+# ── Documentation ─────────────────────────────────────────────────────────────
+*.md
+docs/
+LICENSE
+
+# ── Node.js ───────────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.yarn/
+.pnp.*
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+venv/
+.venv/
+env/
+dist/
+build/
+*.egg-info/
+
+# ── Go ────────────────────────────────────────────────────────────────────────
+vendor/
+*.test
+coverage.out
+
+# ── Secrets (CRITICAL — never allow into image) ───────────────────────────────
+.env
+.env.*
+*.local
+*.pem
+*.key
+*.cert
+*.crt
+secrets/
+credentials/
+
+# ── Test files ────────────────────────────────────────────────────────────────
+test/
+tests/
+__tests__/
+spec/
+*.test.js
+*.spec.js
+*.test.ts
+*.spec.ts
+*_test.go
+coverage/
+
+# ── CI/CD ─────────────────────────────────────────────────────────────────────
+.github/
+.gitlab-ci.yml
+Jenkinsfile
+.circleci/
+
+# ── Scripts not needed in image ───────────────────────────────────────────────
+compare-sizes.sh
+Makefile
+
+# ── Editor & OS ───────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+logs/
+*.log
