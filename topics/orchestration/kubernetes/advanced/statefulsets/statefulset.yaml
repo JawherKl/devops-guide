@@ -1,34 +1,187 @@
+# =============================================================================
+# advanced/statefulsets/statefulset.yaml
+# =============================================================================
+# StatefulSets are for stateful workloads that require:
+#   - Stable, unique network identifiers (pod-0, pod-1, pod-2)
+#   - Stable, persistent storage (each Pod gets its own PVC)
+#   - Ordered, graceful deployment and scaling
+#   - Ordered, automated rolling updates
+#
+# vs Deployment:
+#   Deployment → pod-7d4f9c-xkb2p   (random name, any storage)
+#   StatefulSet → postgres-0         (stable name, dedicated PVC)
+#
+# Each Pod gets: <statefulset-name>-<ordinal>
+#   postgres-0, postgres-1, postgres-2
+#
+# Each Pod gets a DNS name:
+#   <pod-name>.<headless-service>.<namespace>.svc.cluster.local
+#   postgres-0.postgres-headless.default.svc.cluster.local
+#
+# Apply:   kubectl apply -f statefulset.yaml
+# Watch:   kubectl get pods -l app=postgres -w
+# Connect: kubectl exec -it postgres-0 -- psql -U appuser -d appdb
+# =============================================================================
+
+# ── Headless Service ──────────────────────────────────────────────────────────
+# Required by StatefulSet for stable DNS per-Pod.
+# clusterIP: None makes it headless — DNS resolves directly to Pod IPs.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-headless
+  namespace: default
+  labels:
+    app: postgres
+spec:
+  clusterIP: None      # headless — no VIP, DNS → individual Pod IPs
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+
+---
+# ── Read Service ──────────────────────────────────────────────────────────────
+# ClusterIP service pointing to all replicas (for read queries / replicas).
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: default
+  labels:
+    app: postgres
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+
+---
+# ── StatefulSet: PostgreSQL ───────────────────────────────────────────────────
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: mysql-statefulset
+  name: postgres
+  namespace: default
+  labels:
+    app: postgres
+
 spec:
-  serviceName: mysql
+  serviceName: postgres-headless   # must match the headless Service name
   replicas: 3
+  podManagementPolicy: OrderedReady  # OrderedReady (default) | Parallel
+
+  # ── Update strategy ─────────────────────────────────────────────────────────
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 0    # only update pods with ordinal >= partition
+      # Set partition: 2 to canary-update only pod-2 first, then lower gradually
+
   selector:
     matchLabels:
-      app: mysql
+      app: postgres
+
   template:
     metadata:
       labels:
-        app: mysql
+        app: postgres
+
     spec:
+      terminationGracePeriodSeconds: 60  # allow postgres to flush + checkpoint
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999    # postgres user UID in official image
+        runAsGroup: 999
+        fsGroup: 999      # PVC files owned by postgres group
+
+      # ── Init: set correct permissions on data directory ────────────────────
+      initContainers:
+        - name: init-chmod
+          image: busybox:1.36
+          command: ["sh", "-c", "chmod 700 /var/lib/postgresql/data && chown 999:999 /var/lib/postgresql/data"]
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          securityContext:
+            runAsUser: 0   # must run as root to chown
+            runAsNonRoot: false
+
       containers:
-      - name: mysql
-        image: mysql:5.7
-        ports:
-        - containerPort: 3306
-        env:
-        - name: MYSQL_ROOT_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: mysql-secret
-              key: password
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+
+          env:
+            - name: POSTGRES_DB
+              value: appdb
+            - name: POSTGRES_USER
+              value: appuser
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: db-password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            # Expose Pod ordinal as env var (useful for primary/replica logic)
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+
+          ports:
+            - name: postgres
+              containerPort: 5432
+
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+
+          # ── Probes ───────────────────────────────────────────────────────
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "appuser", "-d", "appdb"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "appuser", "-d", "appdb"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+
+  # ── volumeClaimTemplates ─────────────────────────────────────────────────────
+  # Key difference from Deployment: each Pod gets its OWN PVC.
+  # PVC names: postgres-data-postgres-0, postgres-data-postgres-1, etc.
+  # PVCs are NOT deleted when the StatefulSet or Pod is deleted — data persists.
   volumeClaimTemplates:
-  - metadata:
-      name: mysql-pvc
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      resources:
-        requests:
-          storage: 1Gi
+    - metadata:
+        name: postgres-data
+        labels:
+          app: postgres
+      spec:
+        accessModes:
+          - ReadWriteOnce    # RWO: one node at a time (correct for postgres)
+          # ReadWriteMany   # RWX: multiple nodes (NFS/CephFS — for shared storage)
+        storageClassName: standard   # use your cluster's StorageClass
+        resources:
+          requests:
+            storage: 10Gi

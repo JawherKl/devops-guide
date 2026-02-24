@@ -1,18 +1,122 @@
-apiVersion: autoscaling/v2beta2
+# =============================================================================
+# example/hpa-v2.yaml
+# =============================================================================
+# HorizontalPodAutoscaler (HPA) automatically scales Deployment replicas
+# based on observed metrics.
+#
+# Prerequisites:
+#   - Metrics Server must be installed (provides CPU/memory data to HPA)
+#     minikube addons enable metrics-server
+#     OR: kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+#
+#   - Target Deployment MUST have resources.requests defined
+#     (HPA calculates utilization % relative to requests)
+#
+# How scaling works:
+#   desiredReplicas = ceil(currentReplicas × (currentMetric / targetMetric))
+#
+#   Example: 2 replicas, avg CPU = 160% of request, target = 80%
+#   desiredReplicas = ceil(2 × (160 / 80)) = 4 replicas
+#
+# Apply:   kubectl apply -f hpa-v2.yaml
+# Watch:   kubectl get hpa -w
+# Status:  kubectl describe hpa taskapp-api-hpa
+# Load:    kubectl run load --image=busybox --rm -it -- \
+#            sh -c "while true; do wget -q -O- http://taskapp-api/api/tasks; done"
+# =============================================================================
+
+apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: my-app-hpa
+  name: taskapp-api-hpa
+  namespace: default
+  labels:
+    app: taskapp
+    component: api
+
 spec:
+  # ── Target ──────────────────────────────────────────────────────────────────
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: my-app
-  minReplicas: 1
-  maxReplicas: 10
+    name: taskapp-api     # must match deployment.yaml name
+
+  # ── Replica bounds ───────────────────────────────────────────────────────────
+  minReplicas: 2    # never scale below 2 (availability guarantee)
+  maxReplicas: 10   # never exceed 10 (cost control)
+
+  # ── Metrics ──────────────────────────────────────────────────────────────────
   metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 50
+    # ── CPU utilization (most common scaling trigger) ─────────────────────────
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70   # scale up when avg CPU > 70% of request
+
+    # ── Memory utilization ────────────────────────────────────────────────────
+    # Memory-based scaling is less common because:
+    #   1. Memory doesn't decrease easily (GC languages hold memory)
+    #   2. OOMKill is a better signal than scaling for memory leaks
+    # Use only if your app truly scales linearly with memory demand.
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80   # scale up when avg memory > 80% of request
+
+    # ── Custom metric: requests per second (requires Prometheus Adapter) ──────
+    # Uncomment if Prometheus Adapter is installed and metric is exported.
+    # - type: Pods
+    #   pods:
+    #     metric:
+    #       name: http_requests_per_second
+    #     target:
+    #       type: AverageValue
+    #       averageValue: "100"   # scale when > 100 RPS per pod
+
+    # ── External metric: queue depth (requires external-metrics API) ──────────
+    # - type: External
+    #   external:
+    #     metric:
+    #       name: sqs_approximate_number_of_messages_visible
+    #       selector:
+    #         matchLabels:
+    #           queue: taskapp-jobs
+    #     target:
+    #       type: AverageValue
+    #       averageValue: "30"
+
+  # ── Scaling behavior ─────────────────────────────────────────────────────────
+  # Controls HOW FAST the HPA scales up and down.
+  # Without this, HPA can scale up/down aggressively on traffic spikes.
+  behavior:
+    # ── Scale UP: fast response to load ──────────────────────────────────────
+    scaleUp:
+      stabilizationWindowSeconds: 30   # wait 30s before scaling up again
+      policies:
+        # Can add at most 2 pods per 60 seconds
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+        # OR double the pod count per 60 seconds — whichever allows more pods
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+      selectPolicy: Max   # use the policy that allows the most scaling
+
+    # ── Scale DOWN: slow response (avoid flapping) ────────────────────────────
+    scaleDown:
+      stabilizationWindowSeconds: 300   # 5 min: consider the last 5min of metrics
+      policies:
+        # Remove at most 1 pod per 60 seconds
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+        # OR remove at most 10% of pods per 60 seconds
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+      selectPolicy: Min   # use the policy that removes the fewest pods (conservative)

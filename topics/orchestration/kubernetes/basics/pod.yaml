@@ -1,12 +1,130 @@
+# =============================================================================
+# kubernetes/basics/pod.yaml
+# =============================================================================
+# A Pod is the smallest deployable unit in Kubernetes.
+# It wraps one or more containers that share:
+#   - Network namespace (same IP, communicate via localhost)
+#   - Storage volumes
+#   - Lifecycle (start/stop together)
+#
+# ⚠️  Pods are ephemeral — use Deployments in production.
+#     This file is for learning the Pod spec directly.
+#
+# Apply:   kubectl apply -f pod.yaml
+# Watch:   kubectl get pods -w
+# Logs:    kubectl logs demo-pod
+# Shell:   kubectl exec -it demo-pod -- sh
+# Delete:  kubectl delete -f pod.yaml
+# =============================================================================
+
 apiVersion: v1
 kind: Pod
 metadata:
-  name: nginx-pod
+  name: demo-pod
+  namespace: default
   labels:
-    app: nginx
+    app: demo
+    tier: backend
+    version: "1.0"
+  annotations:
+    description: "Basics demo pod — learning the Pod spec"
+    contact: "jawher@example.com"
+
 spec:
+  # ── Restart policy ──────────────────────────────────────────────────────────
+  # Always    = restart on any exit (default, use for long-running services)
+  # OnFailure = restart only on non-zero exit (use for Jobs)
+  # Never     = never restart (use for one-shot tasks)
+  restartPolicy: Always
+
+  # ── Security context (Pod level) ───────────────────────────────────────────
+  # Applied to ALL containers in this Pod unless overridden per-container.
+  securityContext:
+    runAsNonRoot: true        # enforce non-root — scheduler rejects root containers
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroup: 1001             # volume files owned by this GID
+
   containers:
-  - name: nginx-container
-    image: nginx:latest
-    ports:
-    - containerPort: 80
+    - name: api
+      image: nginx:1.25-alpine   # always pin to a specific tag
+      imagePullPolicy: IfNotPresent   # Always | IfNotPresent | Never
+
+      # ── Ports ───────────────────────────────────────────────────────────────
+      # Informational only — does NOT publish or restrict traffic.
+      ports:
+        - containerPort: 80
+          name: http
+          protocol: TCP
+
+      # ── Environment variables ────────────────────────────────────────────────
+      env:
+        - name: ENV_NAME
+          value: "production"
+        # Inject from ConfigMap (see advanced/configmap-secrets)
+        - name: APP_CONFIG
+          valueFrom:
+            configMapKeyRef:
+              name: demo-config    # ConfigMap must exist
+              key: app.config
+              optional: true       # pod starts even if ConfigMap is missing
+        # Inject from Secret
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: demo-secret
+              key: db-password
+              optional: true
+
+      # ── Resource limits ─────────────────────────────────────────────────────
+      # requests: what the scheduler uses to find a node with enough capacity
+      # limits:   hard ceiling — container is killed if exceeded (OOMKilled)
+      resources:
+        requests:
+          cpu: "100m"       # 100 millicores = 0.1 CPU core
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "256Mi"
+
+      # ── Liveness probe ──────────────────────────────────────────────────────
+      # Kubelet restarts the container if this probe fails.
+      # Use for detecting deadlocks (app is running but not responding).
+      livenessProbe:
+        httpGet:
+          path: /
+          port: 80
+        initialDelaySeconds: 10   # wait before first probe
+        periodSeconds: 15         # probe every 15s
+        timeoutSeconds: 5
+        failureThreshold: 3       # restart after 3 consecutive failures
+
+      # ── Readiness probe ─────────────────────────────────────────────────────
+      # Pod is removed from Service endpoints while this probe fails.
+      # Use for detecting when app is not ready to receive traffic (startup, DB not ready).
+      readinessProbe:
+        httpGet:
+          path: /
+          port: 80
+        initialDelaySeconds: 5
+        periodSeconds: 10
+        timeoutSeconds: 3
+        failureThreshold: 3
+
+      # ── Container security context ──────────────────────────────────────────
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+
+      # ── Volume mounts ────────────────────────────────────────────────────────
+      volumeMounts:
+        - name: tmp-dir
+          mountPath: /tmp          # writable even with readOnlyRootFilesystem
+
+  # ── Volumes ────────────────────────────────────────────────────────────────
+  volumes:
+    - name: tmp-dir
+      emptyDir:
+        sizeLimit: 50Mi            # in-memory scratch space

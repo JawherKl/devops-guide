@@ -1,147 +1,126 @@
+# ⎈ Helm — Kubernetes Package Manager
 
-### Helm
+> Helm packages Kubernetes manifests into reusable, versioned, configurable **charts** — eliminating copy-paste YAML across environments and enabling one-command application deployments.
 
-This section provides comprehensive guides and tutorials on Helm, covering basics to advanced topics.
+---
 
-## Overview
+## 💡 Why Helm?
 
-Helm is a package manager for Kubernetes that helps you define, install, and upgrade complex Kubernetes applications. This section covers Helm installation, creating Helm charts, and best practices for managing Helm charts.
+Without Helm you manually manage dozens of YAML files, duplicating them for each environment. With Helm:
 
-### Proposed Subsections
-
-1. Helm Basics
-2. Creating Helm Charts
-3. Best Practices
-
-## Helm Basics
-
-Learn the fundamentals of Helm, including installation and basic usage.
-
-### Installation
-
-- Step-by-step guide to install Helm on various operating systems.
-
-#### Example
-
-```bash
-# Install Helm on Ubuntu
-curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+```
+Without Helm:                      With Helm:
+manifests/
+  deployment-dev.yaml              helm install myapp ./my-chart \
+  deployment-staging.yaml            --set image.tag=1.2.0 \
+  deployment-prod.yaml               --set replicas=3
+  service-dev.yaml                   --values prod-values.yaml
+  service-staging.yaml
+  service-prod.yaml                 # one chart, infinite environments
+  configmap-dev.yaml
+  configmap-prod.yaml
+  secret-dev.yaml  ...
 ```
 
-### Basic Usage
+---
 
-- Helm commands to manage charts and releases.
-- How to search for and install charts from repositories.
+## 📋 Sections
 
-#### Example Commands
+| Section | What you'll learn |
+|---------|-------------------|
+| [basics/my-first-chart/](./basics/my-first-chart/) | Chart anatomy, templates, values, install/upgrade/rollback |
+| [advanced/custom-resources/](./advanced/custom-resources/) | ConfigMap + Secret + Deployment + Service in one chart |
+| [advanced/multi-service-app/](./advanced/multi-service-app/) | Named templates, helpers, multi-component chart |
+
+---
+
+## 🏗️ Chart Anatomy
+
+```
+my-chart/
+├── Chart.yaml          # chart metadata (name, version, description)
+├── values.yaml         # default values — overridden at install time
+├── templates/          # Go-template YAML manifests
+│   ├── _helpers.tpl    # named templates (reusable template fragments)
+│   ├── deployment.yaml # uses {{ .Values.* }} and {{ include "..." }}
+│   ├── service.yaml
+│   ├── ingress.yaml
+│   └── configmap.yaml
+└── charts/             # chart dependencies (sub-charts)
+```
+
+---
+
+## ⚡ Essential Helm Commands
 
 ```bash
-# Add a Helm repository
-helm repo add stable https://charts.helm.sh/stable
+# ── Install / Upgrade ──────────────────────────────────────────────────────
+helm install   <release> <chart>                  # first install
+helm upgrade   <release> <chart> --install        # upgrade or install
+helm upgrade   <release> <chart> -f values.yaml   # with custom values
+helm upgrade   <release> <chart> --set key=value  # inline value override
+helm upgrade   <release> <chart> --atomic         # rollback on failure
+helm upgrade   <release> <chart> --dry-run        # simulate without applying
 
-# Update Helm repositories
+# ── Inspect / Debug ─────────────────────────────────────────────────────────
+helm list                          # list all releases
+helm list -A                       # all namespaces
+helm status  <release>             # release info
+helm history <release>             # revision history
+helm get values <release>          # see applied values
+helm get manifest <release>        # see rendered YAML
+helm template <release> <chart>    # render templates locally (no cluster)
+helm lint <chart>                  # validate chart
+helm test <release>                # run chart tests
+
+# ── Rollback / Uninstall ─────────────────────────────────────────────────────
+helm rollback <release>            # rollback to previous revision
+helm rollback <release> 3          # rollback to revision 3
+helm uninstall <release>           # remove release (keeps history by default)
+helm uninstall <release> --keep-history  # keep history after uninstall
+
+# ── Repositories ─────────────────────────────────────────────────────────────
+helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
-
-# Install a chart
-helm install my-release stable/nginx
-
-# List releases
-helm list
+helm search repo bitnami/postgresql
+helm pull bitnami/postgresql --untar  # download chart locally
 ```
 
-## Creating Helm Charts
+---
 
-Learn how to create your own Helm charts to package Kubernetes applications.
-
-### Chart Structure
-
-- Overview of the Helm chart structure and files.
-
-#### Example Structure
-
-```
-mychart/
-  Chart.yaml
-  values.yaml
-  templates/
-    deployment.yaml
-    service.yaml
-```
-
-### Writing Templates
-
-- How to write templates for Kubernetes resources.
-- Using Go templating syntax in Helm charts.
-
-#### Example Deployment Template
+## 🔑 Templating Quick Reference
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: {{ .Release.Name }}
-spec:
-  replicas: {{ .Values.replicas }}
-  selector:
-    matchLabels:
-      app: {{ .Release.Name }}
-  template:
-    metadata:
-      labels:
-        app: {{ .Release.Name }}
-    spec:
-      containers:
-      - name: {{ .Chart.Name }}
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-        ports:
-        - containerPort: 80
+# values.yaml value          Template expression
+image.repository: nginx  →   {{ .Values.image.repository }}
+replicaCount: 3          →   {{ .Values.replicaCount }}
+.Release.Name            →   {{ .Release.Name }}  (install-time release name)
+.Chart.Name              →   {{ .Chart.Name }}
+.Chart.Version           →   {{ .Chart.Version }}
+
+# Conditionals
+{{- if .Values.ingress.enabled }}
+# render ingress
+{{- end }}
+
+# Loops
+{{- range .Values.ingress.hosts }}
+- host: {{ .host | quote }}
+{{- end }}
+
+# Named template (defined in _helpers.tpl)
+{{ include "mychart.fullname" . }}
+
+# Default value
+{{ .Values.replicaCount | default 1 }}
+
+# Quote string safely
+{{ .Values.image.tag | quote }}
+
+# toYaml + nindent (common for labels, env, resources)
+{{- toYaml .Values.resources | nindent 12 }}
 ```
 
-## Best Practices
+---
 
-Guidelines and best practices for developing and managing Helm charts.
-
-### Versioning
-
-- How to version Helm charts and manage dependencies.
-
-### Security
-
-- Best practices for securing Helm charts and releases.
-
-### CI/CD Integration
-
-- Integrating Helm with CI/CD pipelines for automated deployments.
-
-#### Example CI/CD Pipeline
-
-```yaml
-name: CI Pipeline
-
-on:
-  push:
-    branches:
-      - main
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
-
-    - name: Set up Helm
-      run: |
-        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-
-    - name: Lint Helm chart
-      run: helm lint mychart
-
-    - name: Package Helm chart
-      run: helm package mychart
-```
-
-### Conclusion
-
-This section provides a comprehensive guide to Helm, covering installation, basics, and advanced topics. By following these tutorials and best practices, you will be able to effectively manage Kubernetes applications using Helm.
+**Start here →** [basics/my-first-chart/](./basics/my-first-chart/)

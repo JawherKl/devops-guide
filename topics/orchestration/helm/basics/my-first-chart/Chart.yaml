@@ -1,5 +1,46 @@
-apiVersion: v2
+# =============================================================================
+# Chart.yaml — Chart metadata
+# =============================================================================
+# Every Helm chart MUST have a Chart.yaml at its root.
+# This file describes the chart itself.
+# =============================================================================
+
+apiVersion: v2          # Helm chart API version (v2 = Helm 3, v1 = Helm 2)
+
+# ── Required fields ──────────────────────────────────────────────────────────
 name: my-first-chart
-description: A simple Helm chart for a web application
-version: 0.1.0
-appVersion: "1.0"
+version: 0.1.0          # Chart version — SemVer. Bump on chart changes.
+
+# ── Recommended fields ───────────────────────────────────────────────────────
+description: "A beginner Helm chart — deploys a simple Node.js API with a Service and optional Ingress"
+type: application       # application (deployable) | library (shared templates only)
+
+# App version is SEPARATE from chart version.
+# Chart version tracks chart changes. App version tracks the app being packaged.
+appVersion: "1.0.0"
+
+# ── Optional fields ──────────────────────────────────────────────────────────
+keywords:
+  - nodejs
+  - api
+  - demo
+
+home: https://github.com/JawherKl/devops-guide
+sources:
+  - https://github.com/JawherKl/devops-guide
+
+maintainers:
+  - name: Jawher
+    email: jawher@example.com
+
+# Icon shown in Helm Hub / Artifact Hub
+# icon: https://example.com/icon.png
+
+# ── Dependencies (sub-charts) ────────────────────────────────────────────────
+# Add external charts your chart depends on.
+# Run: helm dependency update  to download them into charts/
+# dependencies:
+#   - name: postgresql
+#     version: "13.x.x"
+#     repository: https://charts.bitnami.com/bitnami
+#     condition: postgresql.enabled   # only install if values.postgresql.enabled=true

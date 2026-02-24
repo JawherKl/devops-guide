@@ -1,0 +1,13 @@
+apiVersion: v2
+name: custom-resources
+version: 0.2.0
+description: "Advanced chart demonstrating ConfigMap, Secret, Deployment, and Service all templated together with environment-specific values"
+type: application
+appVersion: "1.0.0"
+keywords:
+  - configmap
+  - secret
+  - deployment
+maintainers:
+  - name: Jawher
+    email: jawher@example.com
