@@ -1,7 +1,142 @@
+# =============================================================================
+# advanced/configmap-secrets/configmap.yaml
+# =============================================================================
+# ConfigMaps store non-sensitive configuration data as key-value pairs.
+# They can be injected into Pods as:
+#   1. Individual environment variables (valueFrom.configMapKeyRef)
+#   2. All keys as env vars at once (envFrom.configMapRef)
+#   3. Files mounted inside a volume (volumeMounts)
+#
+# Apply:  kubectl apply -f configmap.yaml
+# View:   kubectl get configmap app-config -o yaml
+# =============================================================================
+
+# ── ConfigMap 1: Application configuration ───────────────────────────────────
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: app-config
+  namespace: default
+  labels:
+    app: demo-api
 data:
-  APP_COLOR: blue
-  APP_ENV: prod
+  # ── Simple key/value pairs → env vars ──────────────────────────────────────
+  NODE_ENV: "production"
+  PORT: "3000"
+  LOG_LEVEL: "info"
+  CACHE_TTL: "60"
+
+  # ── Multi-line values → config files ───────────────────────────────────────
+  # Mount as a file: /etc/config/app.config
+  app.config: |
+    [server]
+    port=3000
+    host=0.0.0.0
+
+    [database]
+    pool_size=10
+    timeout_ms=5000
+
+    [cache]
+    ttl=60
+    max_size=1000
+
+  # Nginx config to be mounted as /etc/nginx/conf.d/default.conf
+  nginx.conf: |
+    server {
+        listen 80;
+        location /health {
+            return 200 'ok\n';
+            add_header Content-Type text/plain;
+        }
+        location / {
+            proxy_pass http://localhost:3000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+    }
+
+---
+# ── ConfigMap 2: Feature flags ────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: feature-flags
+  namespace: default
+data:
+  FEATURE_DARK_MODE: "true"
+  FEATURE_BETA_API: "false"
+  FEATURE_RATE_LIMIT: "true"
+  RATE_LIMIT_RPS: "100"
+
+---
+# ── Pod that demonstrates ALL three injection methods ────────────────────────
+apiVersion: v1
+kind: Pod
+metadata:
+  name: configmap-demo
+  namespace: default
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+
+  containers:
+    - name: app
+      image: nginx:1.25-alpine
+      imagePullPolicy: IfNotPresent
+
+      # ── Method 1: Individual key → env var ──────────────────────────────────
+      env:
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: NODE_ENV
+
+        - name: FEATURE_DARK_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: feature-flags
+              key: FEATURE_DARK_MODE
+
+      # ── Method 2: All keys from ConfigMap → env vars ──────────────────────
+      envFrom:
+        - configMapRef:
+            name: feature-flags
+            optional: false      # fail if ConfigMap missing
+
+      # ── Method 3: Mount as files in a volume ──────────────────────────────
+      volumeMounts:
+        - name: app-config-vol
+          mountPath: /etc/config     # /etc/config/app.config will exist
+          readOnly: true
+        - name: nginx-config-vol
+          mountPath: /etc/nginx/conf.d
+          readOnly: true
+
+      resources:
+        requests:
+          cpu: "50m"
+          memory: "64Mi"
+        limits:
+          cpu: "200m"
+          memory: "128Mi"
+
+  volumes:
+    # Mount specific keys as files
+    - name: app-config-vol
+      configMap:
+        name: app-config
+        items:
+          - key: app.config
+            path: app.config    # filename inside the mountPath
+
+    # Mount all keys as files (one file per key)
+    - name: nginx-config-vol
+      configMap:
+        name: app-config
+        items:
+          - key: nginx.conf
+            path: default.conf
+  restartPolicy: Never

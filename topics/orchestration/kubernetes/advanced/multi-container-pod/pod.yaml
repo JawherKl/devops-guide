@@ -1,19 +1,208 @@
+# =============================================================================
+# advanced/multi-container-pod/pod.yaml
+# =============================================================================
+# Multi-container Pods share the same network namespace (localhost) and
+# can share storage volumes. Three key patterns are demonstrated here:
+#
+#   1. Sidecar        — augments the main container (log shipping, proxy)
+#   2. Init Container — runs to completion BEFORE app containers start
+#   3. Shared Volume  — containers share files via an emptyDir volume
+#
+# Apply:  kubectl apply -f pod.yaml
+# Logs:   kubectl logs multi-container-demo -c api
+#         kubectl logs multi-container-demo -c log-shipper
+#         kubectl logs multi-container-demo --all-containers=true
+# Shell:  kubectl exec -it multi-container-demo -c api -- sh
+# =============================================================================
+
 apiVersion: v1
 kind: Pod
 metadata:
-  name: multi-container-pod
+  name: multi-container-demo
+  namespace: default
+  labels:
+    app: multi-container-demo
+  annotations:
+    description: "Demonstrates sidecar, init container, and shared volume patterns"
+
 spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroup: 1001
+
+  # ── Init Containers ──────────────────────────────────────────────────────────
+  # Run sequentially, each to completion, BEFORE any app containers start.
+  # Common uses: DB migration, wait for dependency, pre-populate volume.
+  initContainers:
+
+    # Init 1: Wait for PostgreSQL to be ready before starting the API
+    - name: wait-for-db
+      image: busybox:1.36
+      command:
+        - sh
+        - -c
+        - |
+          echo "Waiting for postgres:5432..."
+          until nc -z -w2 postgres 5432; do
+            echo "postgres not ready — retrying in 2s"
+            sleep 2
+          done
+          echo "postgres is ready ✅"
+      resources:
+        requests:
+          cpu: "10m"
+          memory: "16Mi"
+        limits:
+          cpu: "50m"
+          memory: "32Mi"
+
+    # Init 2: Fetch config from a central config server and write to shared volume
+    - name: config-fetcher
+      image: busybox:1.36
+      command:
+        - sh
+        - -c
+        - |
+          echo "Fetching configuration..."
+          cat > /shared-config/app.env << 'EOF'
+          NODE_ENV=production
+          LOG_LEVEL=info
+          FETCHED_AT=$(date -Iseconds)
+          EOF
+          echo "Config written to /shared-config/app.env ✅"
+      volumeMounts:
+        - name: shared-config
+          mountPath: /shared-config
+      resources:
+        requests:
+          cpu: "10m"
+          memory: "16Mi"
+        limits:
+          cpu: "50m"
+          memory: "32Mi"
+
+  # ── App Containers ───────────────────────────────────────────────────────────
   containers:
-  - name: app-container
-    image: my-app:latest
-    ports:
-    - containerPort: 8080
-  - name: log-sidecar
-    image: busybox:latest
-    command: ["sh", "-c", "tail -f /var/log/app.log"]
-    volumeMounts:
-    - name: log-volume
-      mountPath: /var/log
+
+    # ── Main container: Application API ────────────────────────────────────────
+    - name: api
+      image: node:20-alpine
+      command: ["sh", "-c", "cat /shared-config/app.env && node -e \"require('http').createServer((r,s)=>{s.writeHead(200);s.end(JSON.stringify({pod:process.env.POD_NAME,status:'ok'}))}).listen(3000)\""]
+      ports:
+        - name: http
+          containerPort: 3000
+
+      env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+
+      # Reads the config file written by the init container
+      volumeMounts:
+        - name: shared-config
+          mountPath: /shared-config
+          readOnly: true
+        - name: shared-logs
+          mountPath: /var/log/app
+
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "256Mi"
+
+      livenessProbe:
+        httpGet:
+          path: /
+          port: 3000
+        initialDelaySeconds: 10
+        periodSeconds: 15
+
+      readinessProbe:
+        httpGet:
+          path: /
+          port: 3000
+        initialDelaySeconds: 5
+        periodSeconds: 10
+
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+
+    # ── Sidecar container: Log shipper ─────────────────────────────────────────
+    # Reads log files written by the main container and ships them.
+    # Runs alongside the main container for the Pod's lifetime.
+    # Pattern: both containers share /var/log/app via the shared-logs volume.
+    - name: log-shipper
+      image: busybox:1.36
+      command:
+        - sh
+        - -c
+        - |
+          echo "Log shipper started — tailing /var/log/app/"
+          # In production: replace with Fluentd, Filebeat, Vector, etc.
+          while true; do
+            if ls /var/log/app/*.log 2>/dev/null; then
+              echo "[$(date -Iseconds)] Shipping logs..."
+              # cat /var/log/app/*.log | send_to_loki_or_elasticsearch
+            fi
+            sleep 30
+          done
+
+      volumeMounts:
+        - name: shared-logs
+          mountPath: /var/log/app
+          readOnly: true    # sidecar reads, main container writes
+
+      resources:
+        requests:
+          cpu: "10m"
+          memory: "32Mi"
+        limits:
+          cpu: "100m"
+          memory: "64Mi"
+
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+
+    # ── Sidecar container: Metrics exporter ────────────────────────────────────
+    # Exposes /metrics on port 9113 for Prometheus scraping.
+    # Communicates with the main container via localhost (shared network).
+    - name: metrics-exporter
+      image: nginx/nginx-prometheus-exporter:0.11
+      args:
+        - -nginx.scrape-uri=http://localhost:3000/metrics
+      ports:
+        - name: metrics
+          containerPort: 9113
+
+      resources:
+        requests:
+          cpu: "10m"
+          memory: "32Mi"
+        limits:
+          cpu: "50m"
+          memory: "64Mi"
+
+  # ── Volumes ──────────────────────────────────────────────────────────────────
   volumes:
-  - name: log-volume
-    emptyDir: {}
+    # Shared between init container (write) and main container (read)
+    - name: shared-config
+      emptyDir: {}
+
+    # Shared between main container (write) and log-shipper sidecar (read)
+    - name: shared-logs
+      emptyDir:
+        sizeLimit: 500Mi
+
+  restartPolicy: Always

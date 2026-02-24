@@ -1,5 +1,14 @@
 apiVersion: v2
 name: multi-service-app
-description: A Helm chart for a multi-service application
-version: 0.1.0
-appVersion: "1.0"
+version: 0.3.0
+description: "Production chart deploying a full-stack app: web frontend (Nginx), API backend (Node.js), and PostgreSQL — demonstrating named templates, multi-component charts, and inter-service dependencies"
+type: application
+appVersion: "1.0.0"
+keywords:
+  - fullstack
+  - web
+  - api
+  - postgresql
+maintainers:
+  - name: Jawher
+    email: jawher@example.com

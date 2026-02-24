@@ -1,19 +1,169 @@
+# =============================================================================
+# kubernetes/basics/deployment.yaml
+# =============================================================================
+# A Deployment manages a ReplicaSet which manages Pods.
+# It provides:
+#   - Desired state reconciliation (if a Pod dies, a new one is created)
+#   - Rolling updates with configurable strategy
+#   - Rollback to any previous revision
+#   - Scaling (manual or automatic via HPA)
+#
+# Apply:    kubectl apply -f deployment.yaml
+# Status:   kubectl rollout status deployment/demo-api
+# History:  kubectl rollout history deployment/demo-api
+# Rollback: kubectl rollout undo deployment/demo-api
+# Scale:    kubectl scale deployment demo-api --replicas=5
+# =============================================================================
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nginx-deployment
+  name: demo-api
+  namespace: default
+  labels:
+    app: demo-api
+    tier: backend
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+    description: "Basics demo — Node.js API Deployment"
+
 spec:
-  replicas: 3
+  # ── Replica count ───────────────────────────────────────────────────────────
+  replicas: 3   # always run at least 2-3 replicas in production for HA
+
+  # ── Pod selector ───────────────────────────────────────────────────────────
+  # MUST match template.metadata.labels. Immutable after creation.
   selector:
     matchLabels:
-      app: nginx
+      app: demo-api
+
+  # ── Update strategy ─────────────────────────────────────────────────────────
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1    # max Pods that can be down during update
+      maxSurge: 1          # max extra Pods that can exist during update
+      # With replicas=3: during update you'll have between 2 and 4 Pods running
+
+  # ── Revision history ────────────────────────────────────────────────────────
+  revisionHistoryLimit: 5  # keep 5 old ReplicaSets for rollback
+
+  # ── Pod template ────────────────────────────────────────────────────────────
   template:
     metadata:
       labels:
-        app: nginx
+        app: demo-api      # must match spec.selector.matchLabels
+        version: "1.0"
+
+      # Force pod restart when ConfigMap/Secret changes (common pattern)
+      annotations:
+        rollme: "change-this-string-to-force-restart"
+
     spec:
+      # ── Graceful termination ─────────────────────────────────────────────────
+      # Kubelet sends SIGTERM, waits this many seconds, then SIGKILL
+      terminationGracePeriodSeconds: 30
+
+      # ── Pod-level security ───────────────────────────────────────────────────
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+
+      # ── Pod spread / anti-affinity ───────────────────────────────────────────
+      # Spread replicas across nodes to avoid single-node failure
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: demo-api
+                topologyKey: kubernetes.io/hostname
+
       containers:
-      - name: nginx
-        image: nginx:latest
-        ports:
-        - containerPort: 80
+        - name: api
+          image: node:20-alpine   # replace with your own image
+          imagePullPolicy: IfNotPresent
+          command: ["node", "src/index.js"]
+
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+
+          # ── Environment variables ──────────────────────────────────────────
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3000"
+            # Pod metadata injected as env vars (useful for logging/tracing)
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+          # ── Resources ────────────────────────────────────────────────────
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+
+          # ── Probes ───────────────────────────────────────────────────────
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          # ── Startup probe ────────────────────────────────────────────────
+          # Disables liveness/readiness until the app has started.
+          # Prevents premature restarts for slow-starting apps (JVM, etc.)
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            failureThreshold: 30   # 30 × 2s = 60s max startup time
+            periodSeconds: 2
+
+          # ── Container security ───────────────────────────────────────────
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi

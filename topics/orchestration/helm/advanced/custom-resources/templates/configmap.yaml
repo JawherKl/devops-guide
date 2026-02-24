@@ -1,8 +1,19 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Release.Name }}
+  name: {{ include "custom-resources.fullname" . }}-config
+  labels:
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
 data:
+  NODE_ENV: {{ .Values.config.nodeEnv | quote }}
+  PORT: {{ .Values.config.port | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  CACHE_TTL: {{ .Values.config.cacheTTL | quote }}
   app.conf: |
-    database.host={{ .Release.Name }}-db
-    database.port=5432
+    [server]
+    port={{ .Values.config.port }}
+    [cache]
+    ttl={{ .Values.config.cacheTTL }}

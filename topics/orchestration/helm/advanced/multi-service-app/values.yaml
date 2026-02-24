@@ -1,22 +1,109 @@
+# =============================================================================
+# multi-service-app/values.yaml
+# =============================================================================
+# Full-stack application values: web + api + database.
+# Each component has its own section — override just what you need.
+#
+# Deploy to staging:
+#   helm upgrade myapp ./multi-service-app \
+#     --set web.image.tag=1.2.0 \
+#     --set api.image.tag=1.2.0 \
+#     --set db.password=stagingpassword
+# =============================================================================
+
+# ── Global settings ───────────────────────────────────────────────────────────
+# Applied to all components unless overridden per-component.
+global:
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+# ── Web: Nginx frontend ───────────────────────────────────────────────────────
 web:
+  enabled: true
   replicaCount: 2
   image:
     repository: nginx
-    tag: "1.21.0"
-    pullPolicy: IfNotPresent
+    tag: "1.25-alpine"
   service:
-    type: ClusterIP
+    type: LoadBalancer   # externally accessible
     port: 80
+    targetPort: 80
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "200m"
+      memory: "128Mi"
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
 
+# ── API: Node.js backend ──────────────────────────────────────────────────────
+api:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: node
+    tag: "20-alpine"
+  service:
+    type: ClusterIP    # internal only — web proxies to this
+    port: 80
+    targetPort: 3000
+  env:
+    NODE_ENV: production
+    PORT: "3000"
+    LOG_LEVEL: info
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+  probes:
+    liveness:
+      path: /api/health
+      port: 3000
+    readiness:
+      path: /api/health
+      port: 3000
+
+# ── Database: PostgreSQL ──────────────────────────────────────────────────────
 db:
+  enabled: true
   image:
     repository: postgres
-    tag: "13"
-    pullPolicy: IfNotPresent
+    tag: "16-alpine"
+  database: appdb
+  username: appuser
+  password: "changeme"     # override: --set db.password=$REAL_PASSWORD
   service:
     type: ClusterIP
     port: 5432
-  env:
-    POSTGRES_USER: admin
-    POSTGRES_PASSWORD: password
-    POSTGRES_DB: mydb
+  storage:
+    storageClassName: standard
+    size: 10Gi
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+ingress:
+  enabled: false
+  className: nginx
+  host: app.example.com
+  tls:
+    enabled: false
+    secretName: app-tls

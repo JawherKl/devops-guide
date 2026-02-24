@@ -1,25 +1,116 @@
+# =============================================================================
+# advanced/ingress/ingress.yaml
+# =============================================================================
+# Ingress exposes HTTP/HTTPS routes from outside the cluster to Services.
+# It requires an Ingress Controller to be installed (the Ingress resource
+# alone does nothing — it is only a configuration object).
+#
+# Popular controllers:
+#   ingress-nginx    — nginx-based, most common
+#   Traefik          — cloud-native, auto TLS
+#   AWS ALB          — AWS Application Load Balancer
+#   GKE Ingress      — Google Cloud LB
+#
+# Install ingress-nginx locally:
+#   minikube addons enable ingress
+#   OR
+#   helm install ingress-nginx ingress-nginx/ingress-nginx
+#
+# Apply:  kubectl apply -f ingress.yaml
+# Check:  kubectl get ingress
+#         kubectl describe ingress demo-ingress
+# =============================================================================
+
+# ── Ingress 1: Basic path-based routing ──────────────────────────────────────
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: example-ingress
+  name: demo-ingress
+  namespace: default
+  labels:
+    app: demo-api
   annotations:
+    # ── nginx-specific annotations ───────────────────────────────────────────
     nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "5"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+
+    # Rate limiting — 20 req/s per client IP
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+
+    # Enable CORS
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://app.example.com"
+
+    # Force HTTPS redirect
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
 spec:
+  # Specify which controller class to use (required for multiple controllers)
+  ingressClassName: nginx
+
+  # ── TLS termination ─────────────────────────────────────────────────────────
+  # The Ingress controller terminates TLS and forwards HTTP internally.
+  # The Secret must contain tls.crt and tls.key.
+  tls:
+    - hosts:
+        - api.example.com
+        - app.example.com
+      secretName: tls-secret   # from configmap-secrets/secret.yaml
+
+  # ── Routing rules ───────────────────────────────────────────────────────────
   rules:
-  - host: myapp.example.com
-    http:
-      paths:
-      - path: /app1
-        pathType: Prefix
-        backend:
-          service:
-            name: app1-service
-            port:
-              number: 80
-      - path: /app2
-        pathType: Prefix
-        backend:
-          service:
-            name: app2-service
-            port:
-              number: 80
+    # ── Host: api.example.com ─────────────────────────────────────────────────
+    - host: api.example.com
+      http:
+        paths:
+          # /api → API service
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: demo-api     # must match Service name
+                port:
+                  number: 80
+
+          # /health → dedicated health service (no auth)
+          - path: /health
+            pathType: Exact        # Exact: must match precisely
+            backend:
+              service:
+                name: demo-api
+                port:
+                  number: 80
+
+    # ── Host: app.example.com ─────────────────────────────────────────────────
+    - host: app.example.com
+      http:
+        paths:
+          # / → frontend service (static files served by nginx)
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend-svc
+                port:
+                  number: 80
+
+---
+# ── Ingress 2: Default backend (catch-all) ────────────────────────────────────
+# Handles requests that don't match any rule above.
+# Typically returns a custom 404 page.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-ingress-default
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  defaultBackend:
+    service:
+      name: default-backend-svc
+      port:
+        number: 80

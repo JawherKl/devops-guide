@@ -1,30 +1,244 @@
+# =============================================================================
+# example/deployment.yaml
+# =============================================================================
+# Production-grade Deployment that ties together everything from basics/ and
+# advanced/ sections:
+#   ✅ Multi-container (init + sidecar)
+#   ✅ ConfigMap env injection
+#   ✅ Secret env injection
+#   ✅ Resource requests + limits (required for HPA)
+#   ✅ Liveness + readiness + startup probes
+#   ✅ Pod anti-affinity for HA across nodes
+#   ✅ Security context (non-root, read-only FS, cap_drop)
+#   ✅ Graceful termination
+#   ✅ Rolling update strategy
+#   ✅ Works with hpa-v2.yaml (autoscaling)
+#
+# Apply:   kubectl apply -f deployment.yaml
+# Scale:   kubectl scale deployment taskapp-api --replicas=5
+# Rollout: kubectl rollout status deployment/taskapp-api
+# =============================================================================
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: my-app
+  name: taskapp-api
+  namespace: default
+  labels:
+    app: taskapp
+    component: api
+    version: "1.0.0"
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+
 spec:
-  replicas: 3
+  replicas: 2  # HPA will manage this — must set requests for HPA to work
+
   selector:
     matchLabels:
-      app: my-app
+      app: taskapp
+      component: api
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0    # never take a pod down before a new one is ready
+      maxSurge: 1          # allow one extra pod during update
+
+  revisionHistoryLimit: 5
+
   template:
     metadata:
       labels:
-        app: my-app
+        app: taskapp
+        component: api
+        version: "1.0.0"
+      annotations:
+        # Bump this value to force a pod restart when ConfigMap/Secret changes
+        configmap-checksum: "change-me-on-configmap-update"
+
     spec:
+      terminationGracePeriodSeconds: 30
+
+      # ── Pod security ────────────────────────────────────────────────────────
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+
+      # ── Scheduling: spread replicas across nodes ────────────────────────────
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: taskapp
+                  component: api
+              topologyKey: kubernetes.io/hostname
+
+      # ── Image pull secret (private registry) ───────────────────────────────
+      imagePullSecrets:
+        - name: regcred
+
+      # ── Init: wait for PostgreSQL ───────────────────────────────────────────
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z -w2 postgres 5432; do
+                echo "Waiting for postgres..."
+                sleep 2
+              done
+              echo "postgres ready ✅"
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "16Mi"
+            limits:
+              cpu: "50m"
+              memory: "32Mi"
+
       containers:
-      - name: my-app-container
-        image: my-app:latest
-        ports:
-        - containerPort: 8080
-        env:
-        - name: APP_COLOR
-          valueFrom:
-            configMapKeyRef:
-              name: app-config
-              key: APP_COLOR
-        - name: DB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: app-secret
-              key: DB_PASSWORD
+        # ── Main: Node.js API ─────────────────────────────────────────────────
+        - name: api
+          image: your-registry/taskapp-api:1.0.0
+          imagePullPolicy: Always
+
+          ports:
+            - name: http
+              containerPort: 3000
+
+          # ── Config injection ────────────────────────────────────────────────
+          envFrom:
+            - configMapRef:
+                name: app-config
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3000"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: db-password
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: redis-password
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+
+          # ── Resources (MUST be set for HPA) ────────────────────────────────
+          resources:
+            requests:
+              cpu: "100m"      # HPA uses this to calculate utilization %
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          # ── Probes ──────────────────────────────────────────────────────────
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            failureThreshold: 30
+            periodSeconds: 2        # 60s max startup time
+
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 0  # startup probe handles initial delay
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          # ── Security ────────────────────────────────────────────────────────
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
+          # ── Graceful shutdown ────────────────────────────────────────────────
+          lifecycle:
+            preStop:
+              exec:
+                # Give load balancer time to remove this pod from rotation
+                # before the app starts refusing connections
+                command: ["/bin/sh", "-c", "sleep 5"]
+
+        # ── Sidecar: Metrics exporter ─────────────────────────────────────────
+        - name: metrics
+          image: prom/node-exporter:v1.8.0
+          ports:
+            - name: metrics
+              containerPort: 9100
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "32Mi"
+            limits:
+              cpu: "50m"
+              memory: "64Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi
+
+---
+# ── Service for the Deployment ───────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskapp-api
+  namespace: default
+  labels:
+    app: taskapp
+    component: api
+spec:
+  type: ClusterIP
+  selector:
+    app: taskapp
+    component: api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+    - name: metrics
+      port: 9100
+      targetPort: 9100

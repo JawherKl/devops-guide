@@ -1,0 +1,70 @@
+# =============================================================================
+# custom-resources/values.yaml
+# =============================================================================
+# Production override example:
+#   helm upgrade myapp ./custom-resources \
+#     --set image.tag=2.1.0 \
+#     --set secret.dbPassword=prod-real-password \
+#     -f prod-values.yaml
+# =============================================================================
+
+replicaCount: 2
+
+image:
+  repository: node
+  tag: "20-alpine"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
+
+config:
+  nodeEnv: production
+  port: "3000"
+  logLevel: info
+  cacheTTL: "60"
+  appConf: |
+    [server]
+    port=3000
+    [cache]
+    ttl=60
+
+secret:
+  dbPassword: "changeme"
+  dbUsername: "appuser"
+  redisPassword: "changeme"
+  jwtSecret: "changeme-jwt"
+
+probes:
+  liveness:
+    path: /health
+    port: 3000
+    initialDelaySeconds: 15
+    periodSeconds: 20
+  readiness:
+    path: /health
+    port: 3000
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  fsGroup: 1001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - "ALL"
