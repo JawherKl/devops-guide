@@ -1,0 +1,244 @@
+# =============================================================================
+# flux/example/full-stack.yaml
+# =============================================================================
+# Production-grade Flux setup for the taskapp full stack.
+# Wires together: GitRepository → Kustomization (infra) → HelmRelease (app)
+#                 ImageRepository → ImagePolicy → ImageUpdateAutomation
+#
+# This single file represents the complete GitOps configuration for taskapp:
+#   1. Flux watches this Git repo
+#   2. Infrastructure (namespaces, secrets) reconciled first
+#   3. App deployed via HelmRelease, referencing Git source
+#   4. Image automation updates Helm values when CI pushes new tags
+#
+# One-time setup:
+#   flux bootstrap github --owner=JawherKl --repository=devops-guide \
+#     --path=topics/orchestration/gitops/flux --personal \
+#     --components-extra=image-reflector-controller,image-automation-controller
+#
+#   kubectl apply -f full-stack.yaml -n flux-system
+# =============================================================================
+
+# ── 1. Git source: the entire devops-guide repo ───────────────────────────────
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: devops-guide
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: https://github.com/JawherKl/devops-guide
+  ref:
+    branch: main
+  ignore: |
+    /.github/
+    /docs/
+
+---
+# ── 2. Kustomization: create production namespace + base config ───────────────
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: taskapp-infrastructure
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: devops-guide
+  path: ./topics/orchestration/kustomize/basics
+  prune: false          # never auto-delete infra resources
+  wait: true
+  timeout: 3m
+  targetNamespace: production
+  postBuild:
+    substitute:
+      ENVIRONMENT: production
+      CLUSTER_NAME: prod-cluster
+
+---
+# ── 3. HelmRelease: deploy the full app stack ─────────────────────────────────
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: taskapp
+  namespace: flux-system
+spec:
+  interval: 5m
+  releaseName: taskapp
+  targetNamespace: production
+
+  # Wait for infrastructure Kustomization to be healthy before installing
+  dependsOn:
+    - name: taskapp-infrastructure
+      namespace: flux-system
+
+  chart:
+    spec:
+      sourceRef:
+        kind: GitRepository
+        name: devops-guide
+        namespace: flux-system
+      chart: topics/orchestration/helm/advanced/multi-service-app
+      reconcileStrategy: Revision
+
+  values:
+    web:
+      image:
+        tag: "1.0.0"  # {"$imagepolicy": "flux-system:taskapp-web:tag"}
+      replicaCount: 2
+    api:
+      image:
+        tag: "1.0.0"  # {"$imagepolicy": "flux-system:taskapp-api:tag"}
+      replicaCount: 3
+      autoscaling:
+        enabled: true
+        minReplicas: 3
+        maxReplicas: 10
+    db:
+      enabled: true
+      password: changeme   # in practice: use valuesFrom with a Secret
+
+  valuesFrom:
+    - kind: Secret
+      name: taskapp-db-credentials
+      valuesKey: values.yaml
+      optional: true
+
+  upgrade:
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+    cleanupOnFail: true
+
+  install:
+    createNamespace: true
+    remediation:
+      retries: 3
+
+  driftDetection:
+    mode: enabled
+    ignore:
+      - paths:
+          - /spec/replicas
+        target:
+          kind: Deployment
+
+---
+# ── 4. Image watching: web + api ─────────────────────────────────────────────
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: taskapp-web
+  namespace: flux-system
+spec:
+  image: jawherKl/taskapp-web
+  interval: 1m
+
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: taskapp-api
+  namespace: flux-system
+spec:
+  image: jawherKl/taskapp-api
+  interval: 1m
+
+---
+# ── 5. Image policies: semver ─────────────────────────────────────────────────
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: taskapp-web
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: taskapp-web
+  filterTags:
+    pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    extract: "$0"
+  policy:
+    semver:
+      range: ">=1.0.0"
+
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: taskapp-api
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: taskapp-api
+  filterTags:
+    pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    extract: "$0"
+  policy:
+    semver:
+      range: ">=1.0.0"
+
+---
+# ── 6. Image automation: auto-commit new tags to Git ─────────────────────────
+apiVersion: image.toolkit.fluxcd.io/v1beta1
+kind: ImageUpdateAutomation
+metadata:
+  name: taskapp
+  namespace: flux-system
+spec:
+  interval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: devops-guide
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        name: Flux Bot
+        email: flux@jawherKl.dev
+      messageTemplate: |
+        chore(flux): update taskapp image tags
+
+        {{range .Updated.Images -}}
+        - {{ .Name }}: {{ .OldTag }} → {{ .NewTag }}
+        {{end -}}
+
+        Triggered by: image-automation-controller
+    push:
+      branch: main
+  update:
+    strategy: Setters
+    path: ./topics/orchestration/gitops/flux/example
+
+---
+# ── 7. Notification: Slack alert on reconciliation failure ───────────────────
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: slack
+  namespace: flux-system
+spec:
+  type: slack
+  channel: platform-alerts
+  secretRef:
+    name: slack-webhook-url    # Secret with key: address=https://hooks.slack.com/...
+
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: taskapp-alerts
+  namespace: flux-system
+spec:
+  providerRef:
+    name: slack
+  eventSeverity: error         # only alert on errors (not info events)
+  eventSources:
+    - kind: HelmRelease
+      name: taskapp
+    - kind: Kustomization
+      name: taskapp-infrastructure
+    - kind: ImageUpdateAutomation
+      name: taskapp

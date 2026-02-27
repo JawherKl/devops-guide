@@ -1,0 +1,40 @@
+# Child Application — managed by the root app-of-apps
+# This file lives in the folder the root app watches.
+# When root-app syncs, it creates THIS Application in ArgoCD,
+# which then deploys the actual API workload.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: taskapp-api
+  namespace: argocd
+  annotations:
+    # Sync waves: root-app creates this before db-app (lower wave = earlier)
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+
+spec:
+  project: platform-team
+
+  source:
+    repoURL: https://github.com/JawherKl/devops-guide
+    targetRevision: main
+    path: topics/orchestration/kustomize/overlays/production
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas

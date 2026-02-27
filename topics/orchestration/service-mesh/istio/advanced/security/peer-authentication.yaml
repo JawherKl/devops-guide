@@ -1,0 +1,84 @@
+# =============================================================================
+# advanced/security/peer-authentication.yaml
+# =============================================================================
+# PeerAuthentication configures mTLS (mutual TLS) between services.
+# With mTLS: every service proves its identity before a connection is accepted.
+# No service can talk to another without a valid Istio-issued certificate.
+#
+# Three mTLS modes:
+#   PERMISSIVE  — accepts both plaintext AND mTLS (migration mode)
+#   STRICT      — only mTLS connections accepted (production mode)
+#   DISABLE     — no TLS, plaintext only (never use in production)
+#
+# Rollout strategy:
+#   1. Start PERMISSIVE (allows non-mesh clients to connect)
+#   2. Migrate all clients to the mesh
+#   3. Switch to STRICT
+#
+# Apply:  kubectl apply -f peer-authentication.yaml
+# Verify: istioctl x check-inject -n default
+#         kubectl exec deploy/sleep -- curl http://taskapp-api/health -v 2>&1 | grep subject
+# =============================================================================
+
+# ── Permissive mTLS: mesh-wide (migration phase) ──────────────────────────────
+# Applies to ALL services in ALL namespaces.
+# Both plaintext (legacy) and mTLS connections are accepted.
+# Use this FIRST before enabling strict mode.
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: mesh-permissive
+  namespace: istio-system    # istio-system scope = mesh-wide policy
+spec:
+  mtls:
+    mode: PERMISSIVE
+
+---
+# ── Strict mTLS: namespace-wide (production) ─────────────────────────────────
+# Applies to ALL services in the "production" namespace.
+# Rejects ALL plaintext connections — only services with Istio sidecars can connect.
+# Enable AFTER all workloads in the namespace have sidecars injected.
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: namespace-strict-mtls
+  namespace: production
+spec:
+  mtls:
+    mode: STRICT
+
+---
+# ── Strict mTLS: workload-specific ───────────────────────────────────────────
+# Applies strict mTLS only to pods with app=taskapp-api.
+# Other pods in the same namespace can still use PERMISSIVE.
+# More granular than namespace-wide — useful for incremental rollout.
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: taskapp-api-strict
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: taskapp-api     # only affects pods with this label
+  mtls:
+    mode: STRICT
+
+---
+# ── Port-level mTLS exception ─────────────────────────────────────────────────
+# Apply STRICT mTLS on most ports but allow PERMISSIVE on port 8080
+# (e.g., health check endpoint that must be reachable from outside the mesh).
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: taskapp-api-port-exception
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: taskapp-api
+  mtls:
+    mode: STRICT            # STRICT for all ports by default
+  portLevelMtls:
+    8080:
+      mode: PERMISSIVE      # allow plaintext on health-check port

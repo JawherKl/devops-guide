@@ -1,0 +1,89 @@
+# =============================================================================
+# flux/advanced/image-automation/imageupdateautomation.yaml
+# =============================================================================
+# ImageUpdateAutomation is the final piece of Flux's image automation.
+# When an ImagePolicy selects a new tag, this controller:
+#   1. Clones your Git repo
+#   2. Updates the file containing the image tag marker
+#   3. Commits and pushes to Git
+#   4. Flux's source-controller detects the push
+#   5. Kustomization/HelmRelease reconciles with the new image
+#
+# The MAGIC is in the MARKER COMMENTS in your manifest files:
+#   image: jawherKl/taskapp-api:1.0.0  # {"$imagepolicy": "flux-system:taskapp-api"}
+#   The automation replaces "1.0.0" with whatever the ImagePolicy selects.
+#
+# Apply: kubectl apply -f imageupdateautomation.yaml -n flux-system
+# Watch: flux get images update
+#        kubectl describe imageupdateautomation -n flux-system
+# =============================================================================
+
+apiVersion: image.toolkit.fluxcd.io/v1beta1
+kind: ImageUpdateAutomation
+metadata:
+  name: flux-system
+  namespace: flux-system
+spec:
+  interval: 1m       # check for new image tags every minute
+
+  # ── Source: which Git repo to update ─────────────────────────────────────
+  sourceRef:
+    kind: GitRepository
+    name: devops-guide
+
+  # ── Git: how to commit and push ──────────────────────────────────────────
+  git:
+    checkout:
+      ref:
+        branch: main       # branch to read from AND push to
+
+    commit:
+      author:
+        name: Flux Bot
+        email: flux@jawherKl.dev
+      # messageTemplate: Go template for the commit message
+      # .Updated.Images = map of updated images
+      messageTemplate: |
+        chore(flux): update image tags
+
+        {{range .Updated.Images -}}
+        - {{ .Name }}: {{ .NewTag }}
+        {{end -}}
+
+    push:
+      branch: main         # push directly to main (use a feature branch for PR-based flow)
+      # branch: flux/image-updates    # alternative: open PRs instead of direct push
+
+  # ── Update strategy ──────────────────────────────────────────────────────
+  update:
+    strategy: Setters    # only update files with the marker comment
+                          # ($imagepolicy annotation in the manifest)
+    path: ./topics/orchestration    # only scan this directory for markers
+
+---
+# =============================================================================
+# HOW TO ADD THE MARKER COMMENT TO YOUR MANIFESTS
+# =============================================================================
+#
+# In your Kustomize base deployment.yaml, add the marker comment:
+#
+#   containers:
+#     - name: api
+#       image: jawherKl/taskapp-api:1.0.0  # {"$imagepolicy": "flux-system:taskapp-api"}
+#       #                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#       #   flux-system  = namespace of the ImagePolicy
+#       #   taskapp-api  = name of the ImagePolicy
+#
+# When ImagePolicy selects tag "1.2.3", Flux replaces "1.0.0" with "1.2.3"
+# and commits to Git. Flux then reconciles the cluster with the new tag.
+#
+# For Helm values.yaml:
+#   web:
+#     image:
+#       tag: "1.0.0"  # {"$imagepolicy": "flux-system:taskapp-api:tag"}
+#                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#       # :tag suffix = only update the tag portion, not the full image ref
+#
+# For image name + tag in one field:
+#   image: jawherKl/taskapp-api:1.0.0  # {"$imagepolicy": "flux-system:taskapp-api"}
+# =============================================================================

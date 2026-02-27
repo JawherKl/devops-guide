@@ -1,0 +1,46 @@
+# =============================================================================
+# overlays/staging/kustomization.yaml
+# =============================================================================
+# STAGING overlay: production-like setup with staging image tag.
+# 2 replicas, production resources, staging namespace.
+# Apply: kubectl apply -k overlays/staging/
+# =============================================================================
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+bases:
+  - ../../basics
+
+namespace: staging
+namePrefix: staging-
+
+images:
+  - name: taskapp-api
+    newTag: "1.0.0-rc1"       # release candidate tag for staging
+
+configMapGenerator:
+  - name: app-config
+    behavior: merge
+    literals:
+      - NODE_ENV=staging
+      - LOG_LEVEL=info
+      - CACHE_TTL=30
+
+patches:
+  - path: patch-replicas.yaml
+    target:
+      kind: Deployment
+      name: taskapp-api
+  - path: patch-resources.yaml
+    target:
+      kind: Deployment
+      name: taskapp-api
+  # JSON 6902 patch: precise operation targeting a specific field by path
+  - target:
+      kind: Service
+      name: taskapp-api
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: NodePort

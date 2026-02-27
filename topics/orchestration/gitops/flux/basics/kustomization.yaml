@@ -1,0 +1,110 @@
+# =============================================================================
+# flux/basics/kustomization.yaml
+# =============================================================================
+# A Flux Kustomization watches a GitRepository source and applies the
+# manifests at a given path using Kustomize. It is the RECONCILER —
+# the component that detects drift and restores the desired state.
+#
+# Note: this is a FLUX Kustomization (toolkit.fluxcd.io), not a plain
+# Kustomize kustomization.yaml (kustomize.config.k8s.io). Different CRD.
+# But it CAN point to a path that contains a plain kustomization.yaml.
+#
+# Apply: kubectl apply -f kustomization.yaml -n flux-system
+# Watch: flux get kustomizations
+# Sync now: flux reconcile kustomization taskapp
+# =============================================================================
+
+# ── Basic Kustomization: apply a path from a GitRepository ───────────────────
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: taskapp
+  namespace: flux-system
+spec:
+  # interval: how often to reconcile (check for drift and reapply if needed)
+  interval: 5m
+
+  # retryInterval: on failure, retry after this duration
+  retryInterval: 1m
+
+  # sourceRef: which GitRepository to read from
+  sourceRef:
+    kind: GitRepository
+    name: devops-guide
+
+  # path: which folder in the repo to apply (must contain kustomization.yaml)
+  path: ./topics/orchestration/kustomize/overlays/production
+
+  # prune: delete resources that exist in the cluster but NOT in Git
+  # Set false initially; enable once you're confident in Git as source of truth
+  prune: true
+
+  # targetNamespace: override the namespace for all resources
+  targetNamespace: production
+
+  # wait: wait for resources to be reconciled before marking Kustomization healthy
+  wait: true
+
+  # timeout: max time to wait for reconciliation to complete
+  timeout: 3m
+
+  # force: use server-side apply (handles immutable field errors)
+  force: false
+
+---
+# ── Multi-path Kustomization: infrastructure dependencies first ───────────────
+# Deploy infrastructure (namespaces, CRDs) before app workloads.
+# dependsOn ensures infra is healthy before app reconciliation starts.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: devops-guide
+  path: ./topics/orchestration/kubernetes/advanced/configmap-secrets
+  prune: true
+  wait: true
+  timeout: 5m
+  targetNamespace: production
+
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: taskapp-with-deps
+  namespace: flux-system
+spec:
+  interval: 5m
+  sourceRef:
+    kind: GitRepository
+    name: devops-guide
+  path: ./topics/orchestration/kustomize/overlays/production
+  prune: true
+  targetNamespace: production
+
+  # dependsOn: taskapp-with-deps will NOT reconcile until "infrastructure" is healthy
+  # This replaces sync-waves for cross-Kustomization ordering
+  dependsOn:
+    - name: infrastructure
+
+  # healthChecks: custom resources to watch for readiness before marking success
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: taskapp-api
+      namespace: production
+
+  # postBuild: variable substitution from ConfigMaps or Secrets
+  # Replace ${IMAGE_TAG} in manifests with the value from a ConfigMap
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: flux-vars         # key IMAGE_TAG in this ConfigMap is substituted
+        optional: true
+      - kind: Secret
+        name: flux-secrets
+        optional: true

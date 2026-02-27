@@ -1,0 +1,42 @@
+# Child Application — PostgreSQL database
+# sync-wave: "0" → deploys BEFORE the API (wave 1)
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: taskapp-db
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"   # deploy database first
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+
+spec:
+  project: platform-team
+
+  source:
+    repoURL: https://github.com/JawherKl/devops-guide
+    targetRevision: main
+    # Uses the Helm chart for the database component
+    path: topics/orchestration/helm/advanced/multi-service-app
+    helm:
+      valueFiles:
+        - values.yaml
+      parameters:
+        - name: web.enabled
+          value: "false"
+        - name: api.enabled
+          value: "false"
+        - name: db.enabled
+          value: "true"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+
+  syncPolicy:
+    automated:
+      prune: false    # never auto-prune the database — require manual confirmation
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

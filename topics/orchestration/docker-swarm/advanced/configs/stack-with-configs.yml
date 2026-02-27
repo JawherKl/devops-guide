@@ -1,0 +1,72 @@
+# =============================================================================
+# advanced/configs/stack-with-configs.yml
+# =============================================================================
+# Docker Configs store NON-SECRET configuration data (nginx.conf, app.ini).
+# Like secrets but the data is NOT encrypted — visible to anyone with
+# swarm access. Use configs for config files, secrets for passwords.
+#
+# Create configs:
+#   docker config create nginx_conf ./nginx.conf
+#   docker config create app_ini   ./app.ini
+#
+# Deploy: docker stack deploy -c stack-with-configs.yml configdemo
+# =============================================================================
+
+version: "3.9"
+
+networks:
+  app-net:
+    driver: overlay
+
+# ── Config declarations ───────────────────────────────────────────────────────
+configs:
+  nginx_conf:
+    external: true    # pre-created: docker config create nginx_conf ./nginx.conf
+
+  # Inline config (content embedded directly — good for small configs)
+  app_ini:
+    # file: ./app.ini   # read from file at deploy time
+    # OR define inline in the service:
+    external: false
+    name: app_ini_v1
+
+services:
+  # ── Nginx with custom config file ─────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    ports:
+      - "80:80"
+    networks:
+      - app-net
+    configs:
+      # Mount the nginx_conf config as /etc/nginx/nginx.conf inside the container
+      - source: nginx_conf
+        target: /etc/nginx/nginx.conf
+        mode: 0444   # read-only for all users
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      resources:
+        limits:
+          memory: 64M
+
+  # ── App with INI config file ──────────────────────────────────────────────
+  app:
+    image: node:20-alpine
+    command: ["node", "server.js"]
+    networks:
+      - app-net
+    configs:
+      - source: app_ini
+        target: /etc/app/app.ini
+        uid: "1001"
+        gid: "1001"
+        mode: 0440
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 128M

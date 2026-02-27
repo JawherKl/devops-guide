@@ -1,0 +1,90 @@
+# =============================================================================
+# flux/basics/gitrepository.yaml
+# =============================================================================
+# A GitRepository source tells Flux WHERE to pull manifests from.
+# Flux's source-controller polls the repo on `interval` and caches
+# the contents as a tar archive. Other controllers (Kustomization,
+# HelmRelease) reference this source to get their manifests.
+#
+# Think of it as: GitRepository = "the source of truth"
+#                 Kustomization = "what to do with it"
+#
+# Apply: kubectl apply -f gitrepository.yaml -n flux-system
+# Watch: flux get sources git
+# =============================================================================
+
+# ── Public repository (no credentials needed) ─────────────────────────────────
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: devops-guide
+  namespace: flux-system
+spec:
+  interval: 1m         # poll for changes every 1 minute
+                        # use 5m+ in production to reduce API rate limit usage
+  url: https://github.com/JawherKl/devops-guide
+
+  # targetRevision: which branch/tag/commit to track
+  ref:
+    branch: main       # track the main branch
+    # tag: v1.2.0      # alternatively: track a specific tag
+    # commit: abc1234  # or: a specific commit SHA (immutable, use for audits)
+
+  # ignore: glob patterns for files/dirs Flux should NOT include in the archive
+  # Reduces the archive size and speeds up reconciliation
+  ignore: |
+    # Ignore CI/CD files — Flux doesn't need them
+    .github/
+    .gitlab-ci.yml
+    Makefile
+    # Ignore docs and test dirs
+    docs/
+    tests/
+    # Ignore everything EXCEPT the orchestration topic
+    /*
+    !/topics/orchestration/
+
+---
+# ── Private repository via SSH key ────────────────────────────────────────────
+# For private repos, create a secret first:
+#   flux create secret git devops-guide-ssh \
+#     --url=ssh://git@github.com/JawherKl/devops-guide \
+#     --ssh-key-algorithm=ed25519
+# Then reference it in the GitRepository:
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: devops-guide-private
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: ssh://git@github.com/JawherKl/devops-guide
+
+  ref:
+    branch: main
+
+  # Reference the Secret created by `flux create secret git`
+  secretRef:
+    name: devops-guide-ssh
+
+---
+# ── Private repository via HTTPS token ────────────────────────────────────────
+# Create the secret manually:
+#   kubectl create secret generic github-token \
+#     --from-literal=username=git \
+#     --from-literal=password=ghp_xxxx \
+#     -n flux-system
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: devops-guide-token
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: https://github.com/JawherKl/devops-guide
+
+  ref:
+    branch: main
+
+  secretRef:
+    name: github-token

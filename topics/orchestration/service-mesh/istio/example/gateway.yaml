@@ -1,0 +1,204 @@
+# =============================================================================
+# istio/example/gateway.yaml
+# =============================================================================
+# Ties everything together for the Bookinfo app:
+#   1. Gateway     — accepts ingress traffic on port 80
+#   2. VirtualService (productpage) — route external traffic in
+#   3. DestinationRules — define subsets for all services
+#   4. VirtualService (reviews) — canary 80/20 v1→v3 split
+#   5. PeerAuthentication — strict mTLS for all bookinfo services
+#   6. AuthorizationPolicy — allow only valid inter-service calls
+#
+# After applying:
+#   export GATEWAY_URL=$(kubectl get svc istio-ingressgateway -n istio-system \
+#     -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+#   curl http://$GATEWAY_URL/productpage
+#   open http://$GATEWAY_URL/productpage  (browser)
+# =============================================================================
+
+# ── 1. Istio Gateway ──────────────────────────────────────────────────────────
+# A Gateway configures the INGRESS GATEWAY pod (edge load balancer).
+# It defines which ports/hosts to listen on.
+# Unlike a Kubernetes Ingress, it is NOT tied to any service yet —
+# VirtualServices bind to it using gateways[].
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: bookinfo-gateway
+  namespace: default
+spec:
+  selector:
+    istio: ingressgateway   # selects the istio-ingressgateway pod in istio-system
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*"               # accept all hostnames (use a real domain in production)
+
+---
+# ── 2. VirtualService: external traffic → productpage ────────────────────────
+# Binds the Gateway to the productpage service.
+# Hosts[*] + gateways[bookinfo-gateway] = this VS handles external requests.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: bookinfo
+  namespace: default
+spec:
+  hosts:
+    - "*"
+  gateways:
+    - bookinfo-gateway      # bind to the Gateway above
+  http:
+    - match:
+        - uri:
+            exact: /productpage
+        - uri:
+            prefix: /static
+        - uri:
+            exact: /login
+        - uri:
+            exact: /logout
+        - uri:
+            prefix: /api/v1/products
+      route:
+        - destination:
+            host: productpage
+            port:
+              number: 9080
+
+---
+# ── 3. DestinationRules for all services ─────────────────────────────────────
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: productpage
+  namespace: default
+spec:
+  host: productpage
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: details
+  namespace: default
+spec:
+  host: details
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: ratings
+  namespace: default
+spec:
+  host: ratings
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: reviews
+  namespace: default
+spec:
+  host: reviews
+  trafficPolicy:
+    connectionPool:
+      http:
+        http1MaxPendingRequests: 100
+        http2MaxRequests: 1000
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 10s
+      baseEjectionTime: 30s
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
+    - name: v3
+      labels:
+        version: v3
+
+---
+# ── 4. VirtualService: canary shift reviews v1 → v3 (80/20) ─────────────────
+# 80% of internal reviews calls go to v1 (no stars)
+# 20% of internal reviews calls go to v3 (red stars)
+# Gradually increase v3 weight as confidence grows.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: reviews-canary
+  namespace: default
+spec:
+  hosts:
+    - reviews
+  http:
+    - name: "reviews-canary-split"
+      retries:
+        attempts: 3
+        perTryTimeout: 2s
+        retryOn: "5xx,connect-failure"
+      route:
+        - destination:
+            host: reviews
+            subset: v1
+          weight: 80
+        - destination:
+            host: reviews
+            subset: v3
+          weight: 20
+
+---
+# ── 5. PeerAuthentication: strict mTLS for bookinfo namespace ────────────────
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: bookinfo-mtls
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: productpage
+  mtls:
+    mode: STRICT
+
+---
+# ── 6. AuthorizationPolicy: allow only productpage → reviews ─────────────────
+# reviews can only be called by productpage's service account.
+# Any other caller (including external) is denied.
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: reviews-access
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: reviews
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/default/sa/bookinfo-productpage"
+      to:
+        - operation:
+            methods:
+              - GET
+            paths:
+              - /reviews/*

@@ -1,0 +1,43 @@
+# =============================================================================
+# overlays/production/kustomization.yaml
+# =============================================================================
+# PRODUCTION overlay: HA replicas, strict resources, HPA, LoadBalancer.
+# Apply: kubectl apply -k overlays/production/
+# =============================================================================
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+bases:
+  - ../../basics
+
+namespace: production
+
+images:
+  - name: taskapp-api
+    newTag: "1.0.0"           # pinned stable release tag
+
+configMapGenerator:
+  - name: app-config
+    behavior: merge
+    literals:
+      - NODE_ENV=production
+      - LOG_LEVEL=warn
+      - CACHE_TTL=60
+
+patches:
+  - path: patch-replicas.yaml
+    target:
+      kind: Deployment
+      name: taskapp-api
+  - path: patch-resources.yaml
+    target:
+      kind: Deployment
+      name: taskapp-api
+  - path: patch-hpa.yaml
+
+# ── Additional resources only in production ───────────────────────────────────
+# PodDisruptionBudget ensures at least 2 pods are always available
+# during node maintenance or rolling updates.
+resources:
+  - pdb.yaml

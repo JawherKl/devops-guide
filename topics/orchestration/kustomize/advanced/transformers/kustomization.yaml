@@ -1,0 +1,67 @@
+# =============================================================================
+# advanced/transformers/kustomization.yaml
+# =============================================================================
+# Transformers modify ALL resources in a kustomization simultaneously.
+# This example shows the four built-in transformers:
+#
+#   namePrefix/nameSuffix  → rename every resource
+#   namespace              → move all resources to a namespace
+#   commonLabels           → add labels everywhere
+#   commonAnnotations      → add annotations everywhere
+#
+# Apply: kubectl kustomize advanced/transformers/
+# =============================================================================
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+bases:
+  - ../../basics
+
+# ── namePrefix ────────────────────────────────────────────────────────────────
+# Prepends "myteam-" to the name of EVERY resource.
+# Result: myteam-taskapp-api (Deployment, Service, ConfigMap...)
+# Useful for multi-tenant clusters where multiple teams share a namespace.
+namePrefix: myteam-
+
+# ── nameSuffix ────────────────────────────────────────────────────────────────
+# Appends "-v2" to the name of EVERY resource.
+# Combine with namePrefix: myteam-taskapp-api-v2
+# Useful for blue/green deployments alongside the original.
+nameSuffix: "-v2"
+
+# ── namespace ─────────────────────────────────────────────────────────────────
+# Sets metadata.namespace on ALL resources.
+namespace: platform-team
+
+# ── commonLabels ──────────────────────────────────────────────────────────────
+# Merged into metadata.labels of ALL resources.
+# Also merged into spec.selector.matchLabels and spec.template.metadata.labels
+# of Deployments, StatefulSets, etc.
+commonLabels:
+  team: platform
+  env: demo
+  version: v2
+
+# ── commonAnnotations ─────────────────────────────────────────────────────────
+# Merged into metadata.annotations of ALL resources.
+commonAnnotations:
+  argocd.argoproj.io/managed-by: argocd    # tell ArgoCD to manage this
+  prometheus.io/scrape: "true"
+
+# ── Replacement transformer ───────────────────────────────────────────────────
+# Copy a value from one resource and inject it into another.
+# Example: sync the Deployment's image tag into a CronJob that runs tests.
+replacements:
+  - source:
+      kind: Deployment
+      name: taskapp-api
+      fieldPath: spec.template.spec.containers.[name=api].image
+    targets:
+      - select:
+          kind: ConfigMap
+          name: app-config
+        fieldPaths:
+          - data.APP_IMAGE
+        options:
+          create: true    # create the field if it doesn't exist

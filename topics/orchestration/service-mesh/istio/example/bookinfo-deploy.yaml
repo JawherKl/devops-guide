@@ -1,0 +1,328 @@
+# =============================================================================
+# istio/example/bookinfo-deploy.yaml
+# =============================================================================
+# The Bookinfo application is Istio's canonical demo app.
+# It simulates a bookstore with 4 microservices:
+#
+#   productpage  → calls details + reviews
+#   details      → returns book info (no outbound calls)
+#   reviews v1   → no stars
+#   reviews v2   → black stars (calls ratings)
+#   reviews v3   → red stars (calls ratings)
+#   ratings      → returns star ratings
+#
+# This file deploys all 6 services with proper version labels for Istio routing.
+# Istio sidecar is auto-injected (namespace must have istio-injection=enabled).
+#
+# Prerequisites:
+#   kubectl label namespace default istio-injection=enabled
+#
+# Deploy:
+#   kubectl apply -f bookinfo-deploy.yaml
+#   kubectl apply -f gateway.yaml
+#   kubectl get pods  # wait for 2/2 READY (app + sidecar)
+# =============================================================================
+
+# ── productpage Deployment ────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: productpage-v1
+  namespace: default
+  labels:
+    app: productpage
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: productpage
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: productpage
+        version: v1
+    spec:
+      serviceAccountName: bookinfo-productpage
+      containers:
+        - name: productpage
+          image: docker.io/istio/examples-bookinfo-productpage-v1:1.20.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9080
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bookinfo-productpage
+  namespace: default
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: productpage
+  namespace: default
+  labels:
+    app: productpage
+    service: productpage
+spec:
+  ports:
+    - name: http
+      port: 9080
+  selector:
+    app: productpage
+
+---
+# ── details Deployment ────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: details-v1
+  namespace: default
+  labels:
+    app: details
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: details
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: details
+        version: v1
+    spec:
+      serviceAccountName: bookinfo-details
+      containers:
+        - name: details
+          image: docker.io/istio/examples-bookinfo-details-v1:1.20.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9080
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bookinfo-details
+  namespace: default
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: details
+  namespace: default
+  labels:
+    app: details
+    service: details
+spec:
+  ports:
+    - name: http
+      port: 9080
+  selector:
+    app: details
+
+---
+# ── ratings Deployment ────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ratings-v1
+  namespace: default
+  labels:
+    app: ratings
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ratings
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: ratings
+        version: v1
+    spec:
+      serviceAccountName: bookinfo-ratings
+      containers:
+        - name: ratings
+          image: docker.io/istio/examples-bookinfo-ratings-v1:1.20.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9080
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bookinfo-ratings
+  namespace: default
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ratings
+  namespace: default
+  labels:
+    app: ratings
+    service: ratings
+spec:
+  ports:
+    - name: http
+      port: 9080
+  selector:
+    app: ratings
+
+---
+# ── reviews: THREE versions deployed simultaneously ───────────────────────────
+# All three are active — Istio VirtualService controls which one gets traffic.
+# v1: no stars, v2: black stars, v3: red stars
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reviews-v1
+  namespace: default
+  labels:
+    app: reviews
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reviews
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: reviews
+        version: v1
+    spec:
+      serviceAccountName: bookinfo-reviews
+      containers:
+        - name: reviews
+          image: docker.io/istio/examples-bookinfo-reviews-v1:1.20.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9080
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reviews-v2
+  namespace: default
+  labels:
+    app: reviews
+    version: v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reviews
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: reviews
+        version: v2
+    spec:
+      serviceAccountName: bookinfo-reviews
+      containers:
+        - name: reviews
+          image: docker.io/istio/examples-bookinfo-reviews-v2:1.20.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9080
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reviews-v3
+  namespace: default
+  labels:
+    app: reviews
+    version: v3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reviews
+      version: v3
+  template:
+    metadata:
+      labels:
+        app: reviews
+        version: v3
+    spec:
+      serviceAccountName: bookinfo-reviews
+      containers:
+        - name: reviews
+          image: docker.io/istio/examples-bookinfo-reviews-v3:1.20.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9080
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bookinfo-reviews
+  namespace: default
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reviews
+  namespace: default
+  labels:
+    app: reviews
+    service: reviews
+spec:
+  ports:
+    - name: http
+      port: 9080
+  selector:
+    app: reviews

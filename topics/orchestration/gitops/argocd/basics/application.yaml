@@ -1,0 +1,95 @@
+# =============================================================================
+# argocd/basics/application.yaml
+# =============================================================================
+# The Application CRD is the core ArgoCD resource.
+# It tells ArgoCD:
+#   WHERE  to find the desired state (source: Git repo + path)
+#   WHERE  to deploy it (destination: cluster + namespace)
+#   HOW    to sync (automated or manual, prune orphans, self-heal)
+#
+# Apply: kubectl apply -f application.yaml -n argocd
+# Sync:  argocd app sync taskapp
+# Watch: argocd app get taskapp
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: taskapp
+  namespace: argocd       # Applications always live in the argocd namespace
+  labels:
+    app.kubernetes.io/name: taskapp
+    environment: production
+  # Finalizer ensures ArgoCD deletes all managed resources when the
+  # Application is deleted. Remove to "abandon" resources on deletion.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+
+spec:
+  # ── Project ──────────────────────────────────────────────────────────────
+  # AppProject provides RBAC and source/destination restrictions.
+  # "default" project allows everything — use a custom project in production.
+  project: default
+
+  # ── Source ────────────────────────────────────────────────────────────────
+  # Where ArgoCD reads the desired state from.
+  source:
+    repoURL: https://github.com/JawherKl/devops-guide
+    targetRevision: main        # branch, tag, or commit SHA
+    path: topics/orchestration/kustomize/overlays/production
+
+    # For Helm charts, use this instead of path:
+    # chart: my-first-chart
+    # helm:
+    #   valueFiles:
+    #     - values-production.yaml
+    #   parameters:
+    #     - name: image.tag
+    #       value: "1.2.0"
+
+  # ── Destination ───────────────────────────────────────────────────────────
+  # Where ArgoCD deploys the resources.
+  destination:
+    server: https://kubernetes.default.svc   # in-cluster (same cluster as ArgoCD)
+    namespace: production
+
+  # ── Sync Policy ───────────────────────────────────────────────────────────
+  syncPolicy:
+    # automated: ArgoCD polls every 3 minutes and auto-syncs on any diff.
+    # Remove this block for MANUAL sync (require human approval).
+    automated:
+      prune: true         # delete resources removed from Git
+      selfHeal: true      # revert manual changes made directly in the cluster
+      allowEmpty: false   # never sync an empty application (safety guard)
+
+    syncOptions:
+      - CreateNamespace=true      # create destination namespace if missing
+      - PrunePropagationPolicy=foreground   # wait for children before deleting
+      - PruneLast=true            # delete old resources AFTER new ones are healthy
+      - ApplyOutOfSyncOnly=true   # only apply resources that have changed
+
+    # Retry on sync failure (network issues, webhook timeouts, etc.)
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2         # exponential backoff: 5s, 10s, 20s, 40s, 80s
+        maxDuration: 3m
+
+  # ── Health checks ──────────────────────────────────────────────────────────
+  # ArgoCD tracks health of: Deployment, StatefulSet, DaemonSet,
+  # Service, Ingress, PVC, Job, CronJob, HPA, and custom resources.
+  # No config needed — automatic.
+
+  # ── Ignore differences ─────────────────────────────────────────────────────
+  # Tell ArgoCD to ignore certain field differences (e.g. auto-scaled replicas).
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas    # ignore replica count (managed by HPA)
+    - group: ""
+      kind: ConfigMap
+      name: app-config
+      jsonPointers:
+        - /metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration

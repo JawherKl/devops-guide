@@ -1,0 +1,19 @@
+# =============================================================================
+# advanced/components/monitoring/kustomization.yaml
+# =============================================================================
+# A Kustomize COMPONENT is a reusable unit that any overlay can opt into.
+# Unlike a base, components are only applied when explicitly included.
+#
+# Usage in an overlay's kustomization.yaml:
+#   components:
+#     - ../../advanced/components/monitoring
+#
+# This component adds a ServiceMonitor for Prometheus scraping.
+# It assumes the Prometheus Operator is installed in the cluster.
+# =============================================================================
+
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+  - servicemonitor.yaml

@@ -1,0 +1,138 @@
+# =============================================================================
+# advanced/traffic-management/fault-injection.yaml
+# =============================================================================
+# Fault injection tests your application's resilience WITHOUT touching code.
+# Istio injects faults at the proxy level — your app never knows whether
+# the real downstream is slow or the proxy is simulating slowness.
+#
+# Two fault types:
+#   delay  — simulates network latency or slow upstream service
+#   abort  — simulates upstream returning an HTTP error code
+#
+# Use cases:
+#   - Verify circuit breakers actually trip under load
+#   - Test timeout handling in dependent services
+#   - Chaos engineering without dedicated tooling
+#   - Validate retry logic works end-to-end
+#
+# Apply:   kubectl apply -f fault-injection.yaml
+# Revert:  kubectl delete -f fault-injection.yaml
+# =============================================================================
+
+# ── Delay injection: simulate a slow database ─────────────────────────────────
+# 50% of requests to taskapp-api will experience a 3-second delay.
+# This tests whether your API's timeout is set correctly and whether
+# upstream callers handle the slow response gracefully.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: taskapp-api-delay
+  namespace: default
+spec:
+  hosts:
+    - taskapp-api
+  http:
+    - name: "delay-50-percent"
+      fault:
+        delay:
+          percentage:
+            value: 50.0       # inject delay in 50% of requests
+          fixedDelay: 3s      # add exactly 3 seconds of delay
+      route:
+        - destination:
+            host: taskapp-api
+            subset: v1
+
+---
+# ── Abort injection: simulate upstream failure ────────────────────────────────
+# 20% of requests to the user-service return HTTP 503 immediately.
+# This tests whether your API returns a graceful degraded response
+# or propagates the error to the end user.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: user-service-abort
+  namespace: default
+spec:
+  hosts:
+    - user-service
+  http:
+    - name: "abort-20-percent"
+      fault:
+        abort:
+          percentage:
+            value: 20.0       # inject error in 20% of requests
+          httpStatus: 503     # return HTTP 503 Service Unavailable
+      route:
+        - destination:
+            host: user-service
+            port:
+              number: 80
+
+---
+# ── Combined delay + abort ────────────────────────────────────────────────────
+# Simulate a realistic degraded service: sometimes slow, sometimes down.
+# Use this for comprehensive chaos testing.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: payment-service-chaos
+  namespace: default
+spec:
+  hosts:
+    - payment-service
+  http:
+    - name: "chaos-test"
+      fault:
+        # 10% of requests get a 5-second delay
+        delay:
+          percentage:
+            value: 10.0
+          fixedDelay: 5s
+        # 5% of requests get a 500 error
+        abort:
+          percentage:
+            value: 5.0
+          httpStatus: 500
+      route:
+        - destination:
+            host: payment-service
+            port:
+              number: 80
+
+---
+# ── Fault injection scoped to a specific user ─────────────────────────────────
+# Only inject faults for requests that come from the "test-client" service
+# (identified by the x-test-user header). Other users are unaffected.
+# Great for targeted chaos testing without impacting real users.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: taskapp-api-targeted-fault
+  namespace: default
+spec:
+  hosts:
+    - taskapp-api
+  http:
+    # Only match requests with header x-test-user: chaos-tester
+    - name: "fault-for-test-user"
+      match:
+        - headers:
+            x-test-user:
+              exact: "chaos-tester"
+      fault:
+        delay:
+          percentage:
+            value: 100.0      # 100% delay for the test user
+          fixedDelay: 7s
+      route:
+        - destination:
+            host: taskapp-api
+            subset: v1
+
+    # All other requests proceed normally
+    - name: "normal-route"
+      route:
+        - destination:
+            host: taskapp-api
+            subset: v1

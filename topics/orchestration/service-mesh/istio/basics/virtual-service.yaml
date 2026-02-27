@@ -1,0 +1,124 @@
+# =============================================================================
+# istio/basics/virtual-service.yaml
+# =============================================================================
+# A VirtualService defines HOW traffic is routed to a Kubernetes Service.
+# Without a VirtualService, Istio uses default round-robin load balancing.
+# With one, you can: split traffic, add retries/timeouts, rewrite paths,
+# inject faults, match on headers/methods/URIs, and more.
+#
+# VirtualService ≈ the routing rules
+# DestinationRule ≈ the policy applied AFTER routing (see destination-rule.yaml)
+#
+# Apply: kubectl apply -f virtual-service.yaml
+# Test:  kubectl exec -it deploy/sleep -- curl http://taskapp-api/health
+# Debug: istioctl proxy-config routes deploy/taskapp-api
+# =============================================================================
+
+# ── Basic VirtualService: single destination ──────────────────────────────────
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: taskapp-api
+  namespace: default
+spec:
+  # hosts: the Kubernetes Service name (or FQDN) this VS applies to.
+  # Any request to "taskapp-api" will be governed by these routing rules.
+  hosts:
+    - taskapp-api
+
+  # http[]: ordered list of routing rules.
+  # Rules are evaluated top-to-bottom. First match wins.
+  http:
+    # ── Rule 1: route all traffic to v1 ────────────────────────────────────
+    - name: "route-to-v1"
+      route:
+        - destination:
+            host: taskapp-api       # Kubernetes Service name
+            subset: v1              # defined in DestinationRule
+            port:
+              number: 80
+          weight: 100               # 100% of traffic
+
+---
+# ── VirtualService with retries + timeout ──────────────────────────────────
+# Istio automatically retries failed requests and enforces a timeout.
+# This prevents cascading failures caused by slow or flaky downstream services.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: taskapp-api-resilient
+  namespace: default
+spec:
+  hosts:
+    - taskapp-api
+  http:
+    - name: "route-with-resilience"
+      # ── Timeout ────────────────────────────────────────────────────────────
+      # Abort the request if no response within 3 seconds.
+      # Without this, a slow service can hold connections indefinitely.
+      timeout: 3s
+
+      # ── Retries ─────────────────────────────────────────────────────────────
+      retries:
+        attempts: 3             # retry up to 3 times
+        perTryTimeout: 1s       # each attempt must complete within 1s
+        # Retry on 5xx errors, connection failures, and retriable 4xx codes.
+        # gateway-error = 502, 503, 504
+        # connect-failure = TCP connection refused/reset
+        # retriable-4xx = only 409 by default
+        retryOn: "5xx,gateway-error,connect-failure,retriable-4xx"
+
+      route:
+        - destination:
+            host: taskapp-api
+            subset: v1
+            port:
+              number: 80
+
+---
+# ── VirtualService with URI-based routing ──────────────────────────────────
+# Route different URI prefixes to different backend services.
+# Useful for a monorepo API that is being split into microservices.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: taskapp-path-routing
+  namespace: default
+spec:
+  hosts:
+    - taskapp-api
+  http:
+    # Route /api/users/* to the user service
+    - name: "users-route"
+      match:
+        - uri:
+            prefix: /api/users
+      rewrite:
+        uri: /            # strip the /api/users prefix before forwarding
+      route:
+        - destination:
+            host: user-service
+            port:
+              number: 80
+
+    # Route /api/tasks/* to the task service
+    - name: "tasks-route"
+      match:
+        - uri:
+            prefix: /api/tasks
+      rewrite:
+        uri: /
+      route:
+        - destination:
+            host: task-service
+            port:
+              number: 80
+
+    # Default: everything else goes to the legacy monolith
+    - name: "default-route"
+      route:
+        - destination:
+            host: taskapp-api
+            subset: v1
+            port:
+              number: 80

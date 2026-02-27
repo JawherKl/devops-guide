@@ -1,0 +1,108 @@
+# =============================================================================
+# argocd/basics/project.yaml — AppProject
+# =============================================================================
+# An AppProject groups Applications and enforces:
+#   - Which Git repos are allowed as sources
+#   - Which clusters/namespaces are allowed as destinations
+#   - Which Kubernetes resource types can be deployed
+#   - RBAC: which teams can manage which apps
+#
+# Best practice: never use the "default" project in production.
+# Create one project per team or environment.
+#
+# Apply: kubectl apply -f project.yaml -n argocd
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform-team
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+
+spec:
+  description: "Platform team — owns production and staging deployments"
+
+  # ── Allowed source repositories ──────────────────────────────────────────
+  # Only repos listed here can be used by Applications in this project.
+  sourceRepos:
+    - https://github.com/JawherKl/devops-guide
+    - https://charts.bitnami.com/bitnami    # allow Bitnami Helm charts
+
+  # ── Allowed destinations ─────────────────────────────────────────────────
+  # Only these cluster+namespace combinations can be deployed to.
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: production
+    - server: https://kubernetes.default.svc
+      namespace: staging
+    # Block accidental deployments to kube-system, argocd, etc.
+    # (by NOT listing them here)
+
+  # ── Allowed cluster-scoped resources ─────────────────────────────────────
+  # Resources that affect the entire cluster (not namespace-scoped).
+  # Restrict to only what your team needs.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+
+  # ── Allowed namespace-scoped resources ───────────────────────────────────
+  # Use ["*"] to allow all, or list explicitly for least-privilege.
+  namespaceResourceWhitelist:
+    - group: "apps"
+      kind: Deployment
+    - group: "apps"
+      kind: StatefulSet
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: "networking.k8s.io"
+      kind: Ingress
+    - group: "autoscaling"
+      kind: HorizontalPodAutoscaler
+    - group: "policy"
+      kind: PodDisruptionBudget
+
+  # ── Blacklisted resources ─────────────────────────────────────────────────
+  # Prevent deploying these resource types from this project.
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota   # managed centrally by cluster admins
+
+  # ── RBAC roles within the project ─────────────────────────────────────────
+  roles:
+    # Developers can sync apps and view resources, but not delete
+    - name: developer
+      description: "Can sync and view apps in this project"
+      policies:
+        - p, proj:platform-team:developer, applications, get, platform-team/*, allow
+        - p, proj:platform-team:developer, applications, sync, platform-team/*, allow
+        - p, proj:platform-team:developer, applications, override, platform-team/*, allow
+      groups:
+        - developers   # maps to an SSO group
+
+    # Ops can do everything including delete
+    - name: ops
+      description: "Full control over apps in this project"
+      policies:
+        - p, proj:platform-team:ops, applications, *, platform-team/*, allow
+      groups:
+        - platform-ops
+
+  # ── Sync windows ─────────────────────────────────────────────────────────
+  # Restrict when automated syncs can happen (maintenance windows).
+  syncWindows:
+    - kind: allow
+      schedule: "0 8 * * MON-FRI"   # allow deploys weekdays 8am
+      duration: 8h
+      applications:
+        - "*"
+      manualSync: true    # always allow manual sync even outside window

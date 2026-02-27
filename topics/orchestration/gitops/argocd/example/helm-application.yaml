@@ -1,0 +1,100 @@
+# =============================================================================
+# argocd/example/helm-application.yaml
+# =============================================================================
+# Production-grade ArgoCD Application deploying a Helm chart from Git.
+# This ties together: ArgoCD + Helm + Kustomize + image automation.
+#
+# Workflow:
+#   1. CI builds image, pushes tag "1.2.3" to registry
+#   2. CI updates helm/advanced/multi-service-app/values.yaml with new tag
+#   3. CI commits + pushes to Git
+#   4. ArgoCD detects the diff (polls every 3min or webhook)
+#   5. ArgoCD runs helm upgrade with the new values
+#   6. Pods roll out with the new image
+#
+# Apply: kubectl apply -f helm-application.yaml -n argocd
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: taskapp-production
+  namespace: argocd
+  labels:
+    environment: production
+    team: platform
+  annotations:
+    # Notification policy: alert on sync failure and successful deploy
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: platform-alerts
+    notifications.argoproj.io/subscribe.on-deployed.slack: platform-deploys
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+
+spec:
+  project: platform-team
+
+  # ── Source: Helm chart from Git ──────────────────────────────────────────
+  source:
+    repoURL: https://github.com/JawherKl/devops-guide
+    targetRevision: main
+    path: topics/orchestration/helm/advanced/multi-service-app
+
+    helm:
+      # Override specific values without editing values.yaml
+      # These take precedence over values files.
+      parameters:
+        - name: web.image.tag
+          value: "1.2.3"          # updated by CI pipeline
+        - name: api.image.tag
+          value: "1.2.3"
+        - name: api.replicaCount
+          value: "4"
+
+      # Additional values files (layered on top of chart's values.yaml)
+      valueFiles:
+        - values.yaml
+        - values-production.yaml   # production overrides committed in Git
+
+      # Helm release name (defaults to ArgoCD app name if not set)
+      releaseName: taskapp
+
+      # Skip CRD installation (manage CRDs separately)
+      skipCrds: false
+
+  # ── Destination ──────────────────────────────────────────────────────────
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+
+  # ── Sync policy ──────────────────────────────────────────────────────────
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true        # use server-side apply (handles large resources)
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m
+
+  # ── Ignore HPA-managed replica count ────────────────────────────────────
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+      jqPathExpressions:
+        - .spec.metrics[].resource.target.averageUtilization
+
+  # ── Revision history ─────────────────────────────────────────────────────
+  revisionHistoryLimit: 10

@@ -1,0 +1,43 @@
+# =============================================================================
+# argocd/advanced/app-of-apps/root-app.yaml — The App of Apps Pattern
+# =============================================================================
+# Problem: with 10+ microservices, you'd apply 10+ Application YAMLs manually.
+#
+# Solution: the App of Apps pattern.
+# Create ONE root Application that points to a folder of Application YAMLs.
+# ArgoCD deploys the root app → which creates all child apps → which deploy
+# their own workloads. Git is the only trigger needed.
+#
+#   Git push →  root-app syncs  →  child apps created  →  workloads deployed
+#
+# Apply: kubectl apply -f root-app.yaml -n argocd
+# Then watch: argocd app list
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+
+spec:
+  project: platform-team
+
+  source:
+    repoURL: https://github.com/JawherKl/devops-guide
+    targetRevision: main
+    # Points to the folder containing child Application manifests
+    path: topics/orchestration/gitops/argocd/advanced/app-of-apps/apps
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd    # child Applications are created IN argocd namespace
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
