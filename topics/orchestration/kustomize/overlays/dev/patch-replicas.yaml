@@ -1,0 +1,14 @@
+# =============================================================================
+# overlays/dev/patch-replicas.yaml — Strategic Merge Patch
+# =============================================================================
+# Only the fields listed here are changed. Everything else from the base
+# Deployment is kept as-is.
+# Dev runs 1 replica to save resources.
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskapp-api   # must match the base resource name (before namePrefix)
+spec:
+  replicas: 1

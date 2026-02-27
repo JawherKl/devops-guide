@@ -1,0 +1,92 @@
+# =============================================================================
+# flux/advanced/image-automation/imagerepository.yaml
+# =============================================================================
+# Flux's image-reflector-controller scans a container registry for new image
+# tags and stores them as Kubernetes objects. The image-automation-controller
+# then updates Git files (manifests/values) with the new tag automatically.
+#
+# Full automation pipeline:
+#   CI builds + pushes image:latest → registry
+#   ImageRepository detects new tag
+#   ImagePolicy selects the tag (e.g. latest semver)
+#   ImageUpdateAutomation updates the Git file
+#   Flux reconciles the updated manifests → rolling deploy
+#
+# Prerequisites:
+#   flux bootstrap must already be done
+#   image-reflector + image-automation controllers must be installed:
+#     flux bootstrap ... --components-extra=image-reflector-controller,image-automation-controller
+#
+# Apply: kubectl apply -f imagerepository.yaml -n flux-system
+# Watch: flux get images repository
+#        flux get images policy
+# =============================================================================
+
+# ── ImageRepository: watch Docker Hub for new taskapp-api tags ───────────────
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: taskapp-api
+  namespace: flux-system
+spec:
+  image: jawherKl/taskapp-api     # Docker Hub image (no tag)
+  interval: 1m                     # scan registry every 1 minute
+
+  # secretRef: credentials for private registries
+  # Create with: kubectl create secret docker-registry registry-creds \
+  #   --docker-server=ghcr.io --docker-username=x --docker-password=$TOKEN \
+  #   -n flux-system
+  # secretRef:
+  #   name: registry-creds
+
+---
+# ── ImagePolicy: which tag to select ─────────────────────────────────────────
+# The policy specifies WHICH tag from the repository to track.
+# Flux writes the selected tag into your manifests via ImageUpdateAutomation.
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: taskapp-api
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: taskapp-api             # reference the ImageRepository above
+
+  policy:
+    # SemVer policy: track the latest stable semver tag
+    # Matches: 1.0.0, 1.2.3, 2.0.0-rc1 (pre-releases excluded by default)
+    semver:
+      range: ">=1.0.0"           # any version ≥ 1.0.0 (excludes pre-releases)
+      # range: "^1.0.0"          # only 1.x.x range (no breaking changes)
+      # range: "~1.2.0"          # only 1.2.x range (patch updates only)
+
+    # Alternatively: alphabetical (useful for date-based tags like 20240101)
+    # alphabetical:
+    #   order: asc   # or: desc
+
+    # Alternatively: numerical (for simple integer tags like 42, 43, 44)
+    # numerical:
+    #   order: asc
+
+  # filterTags: only consider tags matching this regex
+  # Useful when a registry has mixed tags (dev, staging, production)
+  filterTags:
+    pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+$"    # only pure semver (no -dev, -rc)
+    extract: "$0"                               # use the full match as the version
+
+---
+# ── ImagePolicy for staging: track release candidates ────────────────────────
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: taskapp-api-staging
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: taskapp-api
+  filterTags:
+    pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+-rc\\.[0-9]+$"   # matches 1.2.0-rc.1
+    extract: "$0"
+  policy:
+    alphabetical:
+      order: desc    # latest RC alphabetically = most recent

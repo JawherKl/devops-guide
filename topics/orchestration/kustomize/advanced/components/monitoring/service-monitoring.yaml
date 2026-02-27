@@ -1,0 +1,22 @@
+# =============================================================================
+# ServiceMonitor — tells Prometheus Operator to scrape this service
+# =============================================================================
+# Requires: prometheus-operator CRDs installed
+# Install: helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: taskapp-api-monitor
+  labels:
+    # This label must match the Prometheus Operator's serviceMonitorSelector
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: taskapp-api      # matches the Service's label
+  endpoints:
+    - port: http             # matches the Service port name
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s

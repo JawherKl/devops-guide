@@ -1,0 +1,114 @@
+# =============================================================================
+# docker-swarm/basics/stack.yml
+# =============================================================================
+# A Swarm stack is a group of related services deployed together.
+# This is the Swarm equivalent of a Kubernetes Deployment + Service.
+#
+# Uses Docker Compose v3 format — most fields map directly.
+# Swarm-specific keys live under deploy:
+#
+# Deploy: docker stack deploy -c stack.yml basics
+# Watch:  docker stack ps basics
+# Logs:   docker service logs basics_api -f
+# Remove: docker stack rm basics
+# =============================================================================
+
+version: "3.9"
+
+# ── Networks ─────────────────────────────────────────────────────────────────
+# Overlay networks span all swarm nodes — containers on any node can
+# communicate via service name DNS (e.g. http://api:3000).
+networks:
+  app-net:
+    driver: overlay
+    attachable: true    # allow standalone containers to attach (useful for debugging)
+    driver_opts:
+      encrypted: "true"   # encrypt overlay traffic between nodes
+
+services:
+  # ── Web: Nginx reverse proxy ─────────────────────────────────────────────
+  web:
+    image: nginx:1.25-alpine
+    ports:
+      # published: port on every swarm node (routing mesh — any node forwards)
+      # target:    port inside the container
+      - published: 80
+        target: 80
+        protocol: tcp
+        mode: ingress   # ingress = routing mesh (load-balanced across replicas)
+                        # host    = port directly on the node's IP (no LB)
+    networks:
+      - app-net
+    deploy:
+      replicas: 2
+      # ── Placement constraints ──────────────────────────────────────────────
+      placement:
+        constraints:
+          - node.role == worker          # only run on worker nodes
+          # - node.labels.zone == us-east  # only on nodes with this label
+      # ── Update policy ─────────────────────────────────────────────────────
+      update_config:
+        parallelism: 1         # update 1 replica at a time
+        delay: 10s             # wait 10s between each replica update
+        order: start-first     # start new replica BEFORE stopping old (zero-downtime)
+        failure_action: rollback   # auto-rollback if update fails
+        monitor: 30s           # observe new task for 30s before marking success
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        order: stop-first
+      # ── Restart policy ────────────────────────────────────────────────────
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      # ── Resources ─────────────────────────────────────────────────────────
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+
+  # ── API: Node.js backend ─────────────────────────────────────────────────
+  api:
+    image: node:20-alpine
+    command: ["node", "-e", "require('http').createServer((r,s)=>{s.writeHead(200);s.end(JSON.stringify({status:'ok',hostname:require('os').hostname()}))}).listen(3000)"]
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+    networks:
+      - app-net
+    # No ports[] — API is internal only, accessed via web's proxy
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+        monitor: 30s
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+      # ── Labels for service discovery / routing tools ───────────────────────
+      labels:
+        traefik.enable: "true"
+        traefik.http.routers.api.rule: "Host(`api.example.com`)"
+        traefik.http.services.api.loadbalancer.server.port: "3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

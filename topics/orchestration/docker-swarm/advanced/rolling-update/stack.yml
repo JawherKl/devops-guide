@@ -1,0 +1,118 @@
+# =============================================================================
+# advanced/rolling-update/stack.yml
+# =============================================================================
+# Demonstrates ALL rolling update configuration options in Docker Swarm.
+# Zero-downtime deployments are achieved with:
+#   order: start-first  (new task ready BEFORE old task stops)
+#   healthcheck         (Swarm waits for healthy before proceeding)
+#   monitor             (observe period after each task update)
+#
+# Deploy initial:   docker stack deploy -c stack.yml rolldemo
+# Update image:     docker service update --image node:21-alpine rolldemo_api
+# Watch rollout:    watch docker service ps rolldemo_api
+# Rollback:         docker service rollback rolldemo_api
+# =============================================================================
+
+version: "3.9"
+
+networks:
+  app-net:
+    driver: overlay
+
+services:
+  api:
+    image: node:20-alpine
+    command: >
+      node -e "
+        const http = require('http');
+        const os = require('os');
+        http.createServer((req, res) => {
+          if (req.url === '/health') {
+            res.writeHead(200);
+            res.end(JSON.stringify({ status: 'healthy', hostname: os.hostname() }));
+          } else {
+            res.writeHead(200);
+            res.end(JSON.stringify({ version: '1.0', hostname: os.hostname() }));
+          }
+        }).listen(3000);
+        console.log('Server running on :3000');
+      "
+    ports:
+      - "3000:3000"
+    networks:
+      - app-net
+
+    # ── Health check ─────────────────────────────────────────────────────────
+    # Swarm uses this to determine if a new task is HEALTHY before
+    # proceeding with the next step of the rolling update.
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 5s         # check every 5s
+      timeout: 3s          # fail if no response in 3s
+      retries: 3           # mark unhealthy after 3 consecutive failures
+      start_period: 10s    # grace period before first health check
+
+    deploy:
+      replicas: 4
+      endpoint_mode: vip   # VIP: single virtual IP, round-robin LB
+                           # dnsrr: DNS round-robin, each request resolves differently
+
+      # ── Update config ────────────────────────────────────────────────────
+      update_config:
+        # How many replicas to update simultaneously
+        parallelism: 1       # 1 = safest (one at a time)
+                             # 2 = update 2 at a time (faster, less safe)
+                             # 0 = update all simultaneously (risky)
+
+        # How long to wait between updating each batch
+        delay: 15s
+
+        # Whether to start the new task BEFORE or AFTER stopping the old one
+        order: start-first   # ZERO DOWNTIME: new replica up before old stops
+                             # stop-first: old stops first (brief capacity reduction)
+
+        # What to do if the update fails (new task doesn't become healthy)
+        failure_action: rollback   # rollback  = revert to previous config
+                                   # pause     = stop updating, leave in mixed state
+                                   # continue  = keep going despite failure
+
+        # How long to monitor new tasks before considering update successful
+        # Must be longer than your health check interval × retries
+        monitor: 30s
+
+        # Maximum failure ratio allowed during update (0.0 to 1.0)
+        # 0.3 = allow up to 30% of tasks to fail before triggering failure_action
+        max_failure_ratio: 0.1
+
+      # ── Rollback config ──────────────────────────────────────────────────
+      # Controls automatic rollback behavior when update fails
+      rollback_config:
+        parallelism: 2     # rollback 2 tasks at a time (faster recovery)
+        delay: 5s
+        order: stop-first  # stop new (failed) task before starting old one
+        monitor: 15s
+        max_failure_ratio: 0.0   # any failure during rollback = rollback fails
+
+      # ── Restart policy ───────────────────────────────────────────────────
+      restart_policy:
+        condition: on-failure   # on-failure | any | none
+        delay: 5s               # wait before restarting
+        max_attempts: 3         # give up after 3 attempts in the window
+        window: 120s            # reset attempt counter after this window
+
+      # ── Resources ────────────────────────────────────────────────────────
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+
+      # ── Placement ────────────────────────────────────────────────────────
+      placement:
+        constraints:
+          - node.role == worker
+        preferences:
+          # Spread replicas evenly across availability zones
+          - spread: node.labels.zone

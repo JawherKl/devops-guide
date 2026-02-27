@@ -1,0 +1,71 @@
+# =============================================================================
+# kustomize/basics/kustomization.yaml
+# =============================================================================
+# This is the BASE kustomization — the single source of truth for your app.
+# Overlays (dev/staging/production) reference this base and add patches on top.
+#
+# Apply directly:   kubectl apply -k basics/
+# Preview output:   kubectl kustomize basics/
+# =============================================================================
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# ── Resources ────────────────────────────────────────────────────────────────
+# List all Kubernetes manifest files that form the base of this app.
+# Kustomize reads them in order and merges patches on top.
+resources:
+  - deployment.yaml
+  - service.yaml
+
+# ── Namespace ─────────────────────────────────────────────────────────────────
+# Applied to ALL resources in this kustomization.
+# Overlays can override this.
+namespace: default
+
+# ── Common Labels ─────────────────────────────────────────────────────────────
+# Added to metadata.labels of ALL resources AND to selector.matchLabels
+# and template.metadata.labels of Deployments.
+# WARNING: changing these after first apply breaks Deployments (immutable selector).
+commonLabels:
+  app.kubernetes.io/name: taskapp
+  app.kubernetes.io/managed-by: kustomize
+
+# ── Common Annotations ────────────────────────────────────────────────────────
+# Added to metadata.annotations of ALL resources.
+commonAnnotations:
+  maintainer: "jawher@example.com"
+  repo: "https://github.com/JawherKl/devops-guide"
+
+# ── Images ───────────────────────────────────────────────────────────────────
+# Override image tags without editing deployment.yaml.
+# This is the primary way to deploy a new version:
+#   kustomize edit set image taskapp-api=registry/taskapp-api:2.0.0
+images:
+  - name: taskapp-api              # matches image name in deployment.yaml
+    newName: taskapp-api           # optional: rename the image
+    newTag: "1.0.0"                # override the tag
+
+# ── ConfigMap Generator ───────────────────────────────────────────────────────
+# Generates a ConfigMap with a content-hash suffix in its name.
+# This forces a Pod restart whenever config values change (rolling update).
+# Generated name: app-config-<hash>
+configMapGenerator:
+  - name: app-config
+    literals:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      - CACHE_TTL=60
+    options:
+      disableNameSuffixHash: false  # set true to use a stable name (no hash)
+
+# ── Secret Generator ──────────────────────────────────────────────────────────
+# Generates a Secret from literals or files.
+# In production: use 'files' pointing to encrypted secrets (SOPS/git-crypt),
+# not literals committed to Git.
+# secretGenerator:
+#   - name: app-secret
+#     literals:
+#       - db-password=changeme
+#     options:
+#       disableNameSuffixHash: false

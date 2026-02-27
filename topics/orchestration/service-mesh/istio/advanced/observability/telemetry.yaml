@@ -1,0 +1,104 @@
+# =============================================================================
+# advanced/observability/telemetry.yaml
+# =============================================================================
+# The Telemetry API controls what observability data Istio's Envoy sidecars
+# collect and export — tracing, access logging, and metrics.
+# Configure once here; all sidecars pick it up automatically via xDS.
+#
+# Without this file: Istio uses its defaults (basic Prometheus metrics,
+# no distributed tracing, default access log format).
+#
+# Apply: kubectl apply -f telemetry.yaml
+# Verify:
+#   kubectl exec deploy/taskapp-api -c istio-proxy -- curl localhost:15000/stats/prometheus | grep istio
+# =============================================================================
+
+# ── Mesh-wide telemetry: enable distributed tracing ──────────────────────────
+# Applied to ALL sidecars in ALL namespaces (namespace: istio-system).
+# Enables Jaeger tracing with 100% sampling for ALL services.
+# In production: reduce randomSamplingPercentage to 1.0 to limit overhead.
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: mesh-default-tracing
+  namespace: istio-system   # istio-system = mesh-wide scope
+spec:
+  tracing:
+    - providers:
+        - name: jaeger            # provider configured in meshconfig
+      randomSamplingPercentage: 100.0   # trace every request (dev/staging)
+      # customTags: add custom attributes to every trace span
+      customTags:
+        environment:
+          literal:
+            value: "production"
+        service-version:
+          header:
+            name: x-service-version
+            defaultValue: unknown
+
+---
+# ── Namespace-level: fine-grained access logs ────────────────────────────────
+# Apply structured JSON access logging to all sidecars in the "default" namespace.
+# JSON format makes logs easier to parse in log aggregators (Loki, Elasticsearch).
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: default-access-log
+  namespace: default
+spec:
+  accessLogging:
+    - providers:
+        - name: envoy
+      # Filter: only log requests that are NOT health checks (reduce noise)
+      filter:
+        expression: "request.url_path != '/health' && request.url_path != '/ready'"
+
+---
+# ── Workload-level: reduce tracing overhead on high-traffic service ───────────
+# Override the mesh-wide 100% sampling for taskapp-api specifically.
+# High-traffic services don't need every request traced.
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: taskapp-api-low-sampling
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: taskapp-api
+  tracing:
+    - providers:
+        - name: jaeger
+      randomSamplingPercentage: 1.0   # sample 1% of requests (production-safe)
+
+---
+# ── ServiceEntry: register external service for observability ─────────────────
+# Tell Istio about an external HTTPS endpoint (outside the cluster).
+# Without a ServiceEntry, Istio treats external traffic as "PassThrough"
+# and cannot apply policies or collect metrics on it.
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: external-payment-api
+  namespace: default
+spec:
+  hosts:
+    - api.stripe.com          # external hostname
+
+  # MESH_EXTERNAL: this host lives outside the mesh
+  location: MESH_EXTERNAL
+
+  ports:
+    - number: 443
+      name: https
+      protocol: HTTPS
+    - number: 80
+      name: http
+      protocol: HTTP
+
+  resolution: DNS             # resolve the hostname via DNS (not static IPs)
+
+  # endpoints: for STATIC resolution (when DNS is not available)
+  # endpoints:
+  #   - address: 54.192.0.0

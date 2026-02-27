@@ -1,0 +1,156 @@
+# =============================================================================
+# advanced/security/authorization-policy.yaml
+# =============================================================================
+# AuthorizationPolicy enforces WHAT traffic is allowed AFTER mTLS authentication.
+# mTLS answers "WHO are you?" — AuthorizationPolicy answers "CAN you do this?"
+#
+# Policy evaluation order (first match wins):
+#   DENY policies   → evaluated first (explicit deny)
+#   ALLOW policies  → evaluated second
+#   No match        → DENY by default if any ALLOW policy exists
+#
+# Best practice: start with a "deny-all" base policy, then add specific ALLOW rules.
+#
+# Apply:  kubectl apply -f authorization-policy.yaml
+# Verify: kubectl exec deploy/sleep -- curl http://taskapp-api/health
+#         istioctl x authz check deploy/taskapp-api
+# =============================================================================
+
+# ── Step 1: deny all traffic by default ──────────────────────────────────────
+# Empty selector + empty rules = deny everything in this namespace.
+# This is the security baseline — then add explicit ALLOW policies below.
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all
+  namespace: default
+spec:
+  {}   # empty spec = deny all
+
+---
+# ── Allow: frontend → API ─────────────────────────────────────────────────────
+# Only the "frontend" service account can call taskapp-api on GET /api/*.
+# All other callers (even internal services) are denied.
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-frontend-to-api
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: taskapp-api          # this policy protects taskapp-api
+
+  action: ALLOW
+
+  rules:
+    - from:
+        # Only allow requests from the "frontend" service account
+        - source:
+            principals:
+              - "cluster.local/ns/default/sa/frontend"
+              # principal format: cluster.local/ns/<namespace>/sa/<serviceaccount>
+      to:
+        # Only allow GET and HEAD requests
+        - operation:
+            methods:
+              - GET
+              - HEAD
+            paths:
+              - /api/*           # only paths under /api/
+              - /health
+
+---
+# ── Allow: API → database (port-restricted) ───────────────────────────────────
+# Only the "taskapp-api" service account can reach postgres on port 5432.
+# No other service can open a connection to the database.
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-api-to-db
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+
+  action: ALLOW
+
+  rules:
+    - from:
+        - source:
+            principals:
+              - "cluster.local/ns/default/sa/taskapp-api"
+      to:
+        - operation:
+            ports:
+              - "5432"
+
+---
+# ── Deny: block specific IP range ────────────────────────────────────────────
+# Explicitly deny all requests from a known bad IP block.
+# DENY policies always take precedence over ALLOW policies.
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-bad-ip-range
+  namespace: default
+spec:
+  action: DENY
+
+  rules:
+    - from:
+        - source:
+            ipBlocks:
+              - "198.51.100.0/24"   # block this CIDR range
+              - "203.0.113.5"       # block this specific IP
+
+---
+# ── Allow: JWT-based authorization ──────────────────────────────────────────
+# Only allow requests that carry a valid JWT with the claim role=admin.
+# Works together with RequestAuthentication (which validates the JWT token).
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-admin-jwt
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: admin-dashboard
+
+  action: ALLOW
+
+  rules:
+    - when:
+        # requestPrincipal is set by Istio after JWT validation
+        - key: request.auth.claims[role]
+          values:
+            - admin
+        - key: request.auth.claims[iss]
+          values:
+            - "https://auth.example.com"
+
+---
+# ── Allow: monitoring namespace scrape ────────────────────────────────────────
+# Allow Prometheus (running in monitoring namespace) to scrape metrics
+# from all pods in the default namespace.
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: default
+spec:
+  action: ALLOW
+
+  rules:
+    - from:
+        - source:
+            namespaces:
+              - monitoring      # allow any service from the monitoring namespace
+      to:
+        - operation:
+            methods:
+              - GET
+            paths:
+              - /metrics

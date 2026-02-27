@@ -1,0 +1,97 @@
+# =============================================================================
+# istio/basics/destination-rule.yaml
+# =============================================================================
+# A DestinationRule defines POLICIES applied to traffic AFTER it has been
+# routed by a VirtualService. Key uses:
+#   - Define subsets (v1, v2) that VirtualServices can route to
+#   - Configure load balancing algorithm
+#   - Configure connection pool (max connections, max pending requests)
+#   - Configure circuit breaking (outlier detection)
+#   - Configure TLS mode for outgoing connections
+#
+# Apply: kubectl apply -f destination-rule.yaml
+# Debug: istioctl proxy-config cluster deploy/taskapp-api --fqdn taskapp-api
+# =============================================================================
+
+# ── DestinationRule: subsets + load balancing ─────────────────────────────────
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: taskapp-api
+  namespace: default
+spec:
+  # host: the Kubernetes Service this rule applies to
+  host: taskapp-api
+
+  # ── Traffic policy (applies to ALL subsets unless overridden) ────────────
+  trafficPolicy:
+    # Load balancing algorithm for all subsets
+    # ROUND_ROBIN  — default, rotates through all healthy endpoints
+    # LEAST_CONN   — routes to the endpoint with fewest active connections
+    # RANDOM       — random endpoint selection
+    # PASSTHROUGH  — no load balancing, use the original destination IP
+    loadBalancer:
+      simple: LEAST_CONN
+
+    # ── Connection pool settings ──────────────────────────────────────────
+    # Limits the number of connections/requests to prevent overwhelming backends.
+    connectionPool:
+      tcp:
+        maxConnections: 100       # max concurrent TCP connections per host
+        connectTimeout: 3s        # TCP connection establishment timeout
+        tcpKeepalive:
+          time: 7200s             # start keepalive after 2 hours of inactivity
+          interval: 75s
+
+      http:
+        http2MaxRequests: 1000          # max concurrent HTTP/2 requests
+        http1MaxPendingRequests: 100    # max queued requests waiting for connection
+        maxRequestsPerConnection: 10   # force connection rotation (avoids hot spots)
+        maxRetries: 3
+
+    # ── Circuit breaker (outlier detection) ──────────────────────────────
+    # Automatically ejects unhealthy endpoints from the load balancing pool.
+    # Prevents routing to hosts that are returning errors.
+    outlierDetection:
+      consecutive5xxErrors: 5       # eject after 5 consecutive 5xx errors
+      interval: 10s                 # scan for unhealthy hosts every 10s
+      baseEjectionTime: 30s         # eject for 30s minimum
+      maxEjectionPercent: 50        # never eject more than 50% of endpoints
+      minHealthPercent: 50          # disable ejection if fewer than 50% healthy
+
+  # ── Subsets ───────────────────────────────────────────────────────────────
+  # Subsets map a name (v1, v2) to pods with specific labels.
+  # VirtualServices reference subsets by name in route.destination.subset.
+  subsets:
+    - name: v1
+      labels:
+        version: v1               # selects pods with label version=v1
+      trafficPolicy:
+        loadBalancer:
+          simple: ROUND_ROBIN     # override global policy for this subset
+
+    - name: v2
+      labels:
+        version: v2
+      trafficPolicy:
+        loadBalancer:
+          simple: LEAST_CONN
+
+---
+# ── DestinationRule: TLS origination ─────────────────────────────────────────
+# Used when your SERVICE calls an EXTERNAL HTTPS endpoint.
+# Istio handles TLS termination/origination at the sidecar level —
+# the application sends plain HTTP, the sidecar upgrades to HTTPS.
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: external-api-tls
+  namespace: default
+spec:
+  host: api.external-service.com
+  trafficPolicy:
+    tls:
+      mode: SIMPLE          # SIMPLE: one-way TLS (verify server cert)
+                            # MUTUAL: mTLS (both sides present certs)
+                            # ISTIO_MUTUAL: use Istio-managed mTLS certs
+                            # DISABLE: no TLS (plain TCP)

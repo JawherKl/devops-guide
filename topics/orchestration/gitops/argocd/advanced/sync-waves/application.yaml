@@ -1,0 +1,163 @@
+# =============================================================================
+# argocd/advanced/sync-waves/application.yaml
+# =============================================================================
+# Sync Waves control the ORDER in which ArgoCD deploys resources within
+# a single Application. Lower wave number = deployed first.
+#
+# Use waves to enforce:
+#   Wave -1: Namespaces, CRDs (must exist before anything else)
+#   Wave  0: ConfigMaps, Secrets, PVCs (config before workloads)
+#   Wave  1: Databases, caches (data layer before app layer)
+#   Wave  2: Backend services (API depends on DB being healthy)
+#   Wave  3: Frontend, Ingress (UI layer last)
+#
+# ArgoCD waits for all resources in wave N to be HEALTHY before
+# starting wave N+1.
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: taskapp-ordered
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+
+spec:
+  project: platform-team
+
+  source:
+    repoURL: https://github.com/JawherKl/devops-guide
+    targetRevision: main
+    path: topics/orchestration/gitops/argocd/advanced/sync-waves/manifests
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # RespectIgnoreDifferences ensures waves work correctly with ignoreDifferences
+      - RespectIgnoreDifferences=true
+
+---
+# =============================================================================
+# Example manifests that would live in the path above.
+# Each resource carries a sync-wave annotation.
+# =============================================================================
+
+# Wave -1: Namespace (must exist before any namespaced resource)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+
+---
+# Wave 0: ConfigMap (config available before pods start)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: production
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+data:
+  NODE_ENV: production
+  LOG_LEVEL: info
+
+---
+# Wave 1: Database StatefulSet
+# ArgoCD waits for postgres-0 pod to be Running before wave 2
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: production
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  serviceName: postgres-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_DB
+              value: appdb
+            - name: POSTGRES_USER
+              value: appuser
+            - name: POSTGRES_PASSWORD
+              value: changeme
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - appuser
+            initialDelaySeconds: 10
+            periodSeconds: 5
+
+---
+# Wave 2: API Deployment (starts only after postgres is healthy)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskapp-api
+  namespace: production
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: taskapp-api
+  template:
+    metadata:
+      labels:
+        app: taskapp-api
+    spec:
+      containers:
+        - name: api
+          image: taskapp-api:1.0.0
+          ports:
+            - containerPort: 3000
+
+---
+# Wave 3: Ingress (route traffic only after API is healthy)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: taskapp-ingress
+  namespace: production
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: taskapp-api
+                port:
+                  number: 80

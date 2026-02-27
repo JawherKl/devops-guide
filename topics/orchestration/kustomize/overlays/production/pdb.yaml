@@ -1,0 +1,23 @@
+# =============================================================================
+# overlays/production/pdb.yaml — PodDisruptionBudget
+# =============================================================================
+# Guarantees a minimum number of Pods remain available during voluntary
+# disruptions (node drain, rolling update, cluster upgrade).
+#
+# minAvailable: 2  → at least 2 pods must stay running at all times
+# This means: with 4 replicas, at most 2 can be disrupted simultaneously.
+# =============================================================================
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: taskapp-api-pdb
+  namespace: production
+  labels:
+    app: taskapp-api
+spec:
+  minAvailable: 2
+  # Alternative: maxUnavailable: 1  (at most 1 pod can be down at a time)
+  selector:
+    matchLabels:
+      app: taskapp-api

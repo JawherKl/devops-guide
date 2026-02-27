@@ -1,0 +1,21 @@
+# =============================================================================
+# kustomize/basics/service.yaml
+# =============================================================================
+# Base Service — plain YAML, no environment-specific values.
+# =============================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskapp-api
+  labels:
+    app: taskapp-api
+spec:
+  type: ClusterIP
+  selector:
+    app: taskapp-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+      protocol: TCP

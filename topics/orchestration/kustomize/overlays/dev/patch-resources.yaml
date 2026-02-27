@@ -1,0 +1,23 @@
+# =============================================================================
+# overlays/dev/patch-resources.yaml — Strategic Merge Patch
+# =============================================================================
+# Dev uses reduced CPU/memory to save cluster resources.
+# The container name MUST match the base deployment container name.
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskapp-api
+spec:
+  template:
+    spec:
+      containers:
+        - name: api       # must match containers[].name in base deployment
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"

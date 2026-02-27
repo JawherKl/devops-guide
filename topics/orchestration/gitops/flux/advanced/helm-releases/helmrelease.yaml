@@ -1,0 +1,152 @@
+# =============================================================================
+# flux/advanced/helm-releases/helmrelease.yaml
+# =============================================================================
+# A HelmRelease tells Flux's helm-controller to install/upgrade a Helm chart.
+# Flux manages the full lifecycle: install, upgrade, test, rollback.
+#
+# Equivalent of: helm upgrade --install myapp ./chart -f values.yaml
+# But declarative, Git-driven, and continuously reconciled.
+#
+# Apply: kubectl apply -f helmrelease.yaml -n flux-system
+# Watch: flux get helmreleases
+# Reconcile now: flux reconcile helmrelease taskapp
+# =============================================================================
+
+# ── HelmRepository source: register a Helm chart repository ──────────────────
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: HelmRepository
+metadata:
+  name: devops-guide-charts
+  namespace: flux-system
+spec:
+  interval: 1h              # resync the chart index hourly
+  url: https://JawherKl.github.io/devops-guide/charts   # your chart repo URL
+  # For OCI registries (Helm 3.8+):
+  # url: oci://ghcr.io/jawherKl/charts
+  # type: oci
+
+---
+# ── HelmRelease from a Git path (local chart) ────────────────────────────────
+# Reference a chart stored in the same Git repo.
+# Flux bundles the chart from the GitRepository source.
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: taskapp
+  namespace: flux-system
+spec:
+  interval: 10m              # reconcile every 10 minutes
+  releaseName: taskapp
+  targetNamespace: production
+
+  # ── Chart source ───────────────────────────────────────────────────────────
+  chart:
+    spec:
+      # sourceRef points to a GitRepository (for local charts)
+      sourceRef:
+        kind: GitRepository
+        name: devops-guide
+        namespace: flux-system
+      # path inside the Git repo where the chart lives
+      chart: topics/orchestration/helm/advanced/multi-service-app
+      # reconcileStrategy: how to detect chart updates
+      # ChartVersion = only upgrade on chart version bump in Chart.yaml
+      # Revision     = upgrade on any change to the chart files
+      reconcileStrategy: Revision
+
+  # ── Values ────────────────────────────────────────────────────────────────
+  # Inline values override chart defaults (same as -f values.yaml)
+  values:
+    web:
+      image:
+        tag: "1.0.0"
+      replicaCount: 2
+    api:
+      image:
+        tag: "1.0.0"
+      replicaCount: 3
+      autoscaling:
+        enabled: true
+        minReplicas: 3
+        maxReplicas: 10
+    db:
+      enabled: true
+      storage:
+        size: 20Gi
+
+  # ── Values from Secrets/ConfigMaps ───────────────────────────────────────
+  # Merge values from external sources (for secrets like DB passwords)
+  valuesFrom:
+    - kind: Secret
+      name: taskapp-helm-secrets      # Secret with values.yaml key
+      valuesKey: values.yaml
+      optional: true
+    - kind: ConfigMap
+      name: taskapp-helm-config
+      valuesKey: prod-values.yaml
+      optional: true
+
+  # ── Upgrade config ─────────────────────────────────────────────────────────
+  upgrade:
+    remediation:
+      retries: 3               # retry failed upgrades up to 3 times
+      remediateLastFailure: true
+    crds: CreateReplace        # CreateOnly | CreateReplace | Skip
+    cleanupOnFail: true        # delete new resources on upgrade failure
+    force: false               # set true to recreate immutable resources
+
+  # ── Install config ──────────────────────────────────────────────────────────
+  install:
+    remediation:
+      retries: 3
+    createNamespace: true
+    replace: false
+
+  # ── Rollback config ─────────────────────────────────────────────────────────
+  rollback:
+    timeout: 5m
+    cleanupOnFail: true
+    force: false
+
+  # ── Test ───────────────────────────────────────────────────────────────────
+  test:
+    enable: true               # run helm test after each install/upgrade
+    ignoreFailures: false
+
+  # ── Drift detection ────────────────────────────────────────────────────────
+  driftDetection:
+    mode: enabled              # detect and remediate manual changes
+    ignore:
+      - paths:
+          - /spec/replicas     # ignore replica count (managed by HPA)
+        target:
+          kind: Deployment
+
+---
+# ── HelmRelease from a HelmRepository (external chart) ───────────────────────
+# Install cert-manager from the Jetstack chart repository.
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: cert-manager
+  namespace: flux-system
+spec:
+  interval: 1h
+  releaseName: cert-manager
+  targetNamespace: cert-manager
+
+  chart:
+    spec:
+      chart: cert-manager
+      version: "v1.14.*"       # semver range: always latest v1.14.x patch
+      sourceRef:
+        kind: HelmRepository
+        name: devops-guide-charts
+        namespace: flux-system
+
+  values:
+    installCRDs: true
+    prometheus:
+      enabled: true
+      servicemonitor:
+        enabled: true
