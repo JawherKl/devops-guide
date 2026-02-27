@@ -46,7 +46,7 @@ base/                          overlays/production/
           ↓                              ↓
      base resources            overlay patches
           └──────────── merge ───────────┘
-                              ↓
+                          ↓
                     final rendered YAML
 ```
 
