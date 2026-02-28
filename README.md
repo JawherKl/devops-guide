@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="https://github.com/JawherKl/devops-guide/raw/main/images/devops.png" alt="DevOps Guide Banner" width="800"/>
+  <img src="https://github.com/JawherKl/devops-guide/blob/main/images/devops-guide.png" alt="DevOps Guide Banner" width="800"/>
 </p>
 
 <p align="center">
@@ -236,5 +236,6 @@ This repository is licensed under the [MIT License](LICENSE).
 ---
 
 ## 🌟 Stargazers over time
+
 
 [![Stargazers over time](https://starchart.cc/JawherKl/devops-guide.svg?variant=adaptive)](https://starchart.cc/JawherKl/devops-guide)
