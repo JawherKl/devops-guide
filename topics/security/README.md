@@ -1,78 +1,122 @@
-# Security in DevOps
+# 🔒 Security
 
-## Introduction
-Security is a critical aspect of DevOps, often referred to as DevSecOps. Integrating security practices into the DevOps workflow ensures that security is considered at every stage of the development and deployment process. This approach helps identify and mitigate security vulnerabilities early and continuously.
+<p align="center">
+  <img src="https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black"/>
+  <img src="https://img.shields.io/badge/OpenSSL-721412?style=for-the-badge&logo=openssl&logoColor=white"/>
+  <img src="https://img.shields.io/badge/HashiCorp_Vault-FFEC6E?style=for-the-badge&logo=vault&logoColor=black"/>
+  <img src="https://img.shields.io/badge/Fail2ban-E03B00?style=for-the-badge&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Let's_Encrypt-003A70?style=for-the-badge&logo=letsencrypt&logoColor=white"/>
+</p>
 
-## Best Practices for DevSecOps
-- **Shift-Left Security**: Incorporate security early in the development process.
-- **Continuous Monitoring**: Regularly monitor applications and infrastructure for security threats.
-- **Automated Security Testing**: Integrate automated security tests into the CI/CD pipeline.
-- **Use of Security Tools**: Leverage tools to identify and address vulnerabilities.
+> Security is not a product you buy or a step at the end of the pipeline. It is an engineering discipline applied continuously — in how you configure servers, how you issue certificates, how you manage identities, how you respond to incidents. This topic covers infrastructure and system security: hardening the OS, locking down the network, managing identities and access, operating TLS/PKI, triaging CVEs, and responding to incidents.
 
-## Tools for DevSecOps
-### Snyk
-Snyk is a developer-first security tool that helps find and fix vulnerabilities in dependencies, container images, Kubernetes applications, and infrastructure as code.
+> **Relationship to DevSecOps**: The [DevSecOps](../devsecops/) topic covers pipeline security — SAST, dependency scanning, container image scanning, and policy-as-code. This topic covers the infrastructure layer underneath: the servers, networks, identities, and certificates that everything runs on.
 
-#### Example Usage
-1. **Setting up Snyk**:
-   ```sh
-   npm install -g snyk
-   snyk auth
-   ```
-2. **Scanning a Project**:
-   ```sh
-   snyk test
-   ```
-3. **Monitoring a Project**:
-   ```sh
-   snyk monitor
-   ```
+---
 
-### OWASP ZAP
-OWASP ZAP (Zed Attack Proxy) is an open-source security tool for finding vulnerabilities in web applications.
+## 🗺️ Security Domains
 
-#### Example Usage
-1. **Installing OWASP ZAP**:
-   ```sh
-   sudo apt install zaproxy
-   ```
-2. **Running a Security Scan**:
-   ```sh
-   zap.sh -daemon -config api.key=<your_api_key>
-   zap-cli quick-scan --self-contained http://example.com
-   ```
-3. **Automating with CI/CD**:
-   - Add OWASP ZAP to your CI/CD pipeline to automatically scan web applications.
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                        SECURITY LAYERS                             │
+│                                                                    │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  Incident Response  ←  detect, contain, recover, learn       │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│            ▲ feeds into                                            │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  Vulnerability Management  ←  CVE triage, patching, tracking │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│            ▲ protects                                              │
+│  ┌───────────────────────┐   ┌──────────────────────────────────┐  │
+│  │  TLS / PKI            │   │  Identity & Access Management    │  │
+│  │  certificates, CA,    │   │  users, roles, SSH keys, RBAC,   │  │
+│  │  mTLS, rotation       │   │  MFA, least privilege            │  │
+│  └───────────────────────┘   └──────────────────────────────────┘  │
+│            ▲ secures traffic          ▲ controls who/what          │
+│  ┌───────────────────────┐   ┌──────────────────────────────────┐  │
+│  │  Network Security     │   │  System Hardening                │  │
+│  │  firewall, segmentation│  │  kernel, OS, SSH, audit logs     │  │
+│  │  IDS/IPS, VPN         │   │  AppArmor, SELinux, capabilities │  │
+│  └───────────────────────┘   └──────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────┘
+```
 
-### Trivy
-Trivy is a simple and comprehensive vulnerability scanner for containers and other artifacts.
+---
 
-#### Example Usage
-1. **Installing Trivy**:
-   ```sh
-   sudo apt install trivy
-   ```
-2. **Scanning Docker Images**:
-   ```sh
-   trivy image <image_name>
-   ```
-3. **Integrating with CI/CD**:
-   - Use Trivy in your CI/CD pipeline to scan Docker images for vulnerabilities.
+## 📋 Contents
 
-## Example Implementations
-### Snyk Example
-- [Snyk Example Implementation](snyk-example.md)
+| Folder | Files | What you'll learn |
+|--------|-------|-------------------|
+| [hardening/](./hardening/) | `linux.md` · `ssh.md` · `kernel.md` | CIS Benchmark, sysctl hardening, AppArmor/SELinux, audit daemon, SSH lockdown |
+| [network-security/](./network-security/) | `firewall.md` · `ids-ips.md` · `network-segmentation.md` | iptables/nftables, fail2ban, Suricata, VLANs, zero-trust networking |
+| [identity-access/](./identity-access/) | `iam.md` · `rbac.md` · `mfa.md` | Linux RBAC, sudo hardening, SSH certificates, OIDC, PAM, MFA with TOTP |
+| [tls-pki/](./tls-pki/) | `certificates.md` · `ca-setup.md` · `mtls.md` | TLS handshake, self-signed vs CA-signed, internal CA with cfssl/step-ca, mTLS |
+| [vulnerability-management/](./vulnerability-management/) | `cve-triage.md` · `patch-management.md` | CVE scoring, patch SLAs, `unattended-upgrades`, kernel live-patching |
+| [incident-response/](./incident-response/) | `playbooks.md` · `forensics.md` | IR phases, containment runbooks, Linux forensics, log preservation |
 
-### OWASP ZAP Example
-- [OWASP ZAP Example Implementation](owasp-zap-example.md)
+---
 
-### Trivy Example
-- [Trivy Example Implementation](trivy-example.md)
+## 🗺️ Learning Path
 
-## Conclusion
-Integrating security into DevOps practices is essential for building robust and secure applications. By following best practices and using the right tools, you can ensure that security is a continuous and integral part of your development workflow.
+```
+1. hardening/           ← lock down the baseline before anything else
+        ↓
+2. network-security/    ← control what traffic can reach the system
+        ↓
+3. identity-access/     ← control who and what can operate the system
+        ↓
+4. tls-pki/             ← encrypt everything in transit
+        ↓
+5. vulnerability-management/  ← find and fix weaknesses continuously
+        ↓
+6. incident-response/   ← prepare to detect, respond, and recover
+```
 
-## References
-- [Snyk Documentation](https://snyk.io/docs/)
-- [OWASP ZAP Documentation](https://www.zaproxy.org/)
-- [Trivy Documentation](https://github.com/aquasecurity/trivy)
+---
+
+## ⚡ Security Quick Wins (Do These Today)
+
+```bash
+# 1. Disable root SSH login
+echo "PermitRootLogin no" >> /etc/ssh/sshd_config
+echo "PasswordAuthentication no" >> /etc/ssh/sshd_config
+systemctl reload sshd
+
+# 2. Enable automatic security updates
+apt install unattended-upgrades
+dpkg-reconfigure -plow unattended-upgrades
+
+# 3. Enable firewall — deny by default
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow 22/tcp
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw enable
+
+# 4. Audit SUID binaries (should be a short, known list)
+find / -perm /4000 -type f 2>/dev/null | sort
+
+# 5. Check listening services (attack surface)
+ss -tlnp
+
+# 6. Ensure no empty passwords exist
+awk -F: '($2 == "") {print $1}' /etc/shadow
+
+# 7. Check for world-writable directories
+find / -xdev -type d -perm -0002 -not -perm -1000 2>/dev/null
+
+# 8. Verify auditd is running
+systemctl status auditd
+```
+
+---
+
+## 🔗 Related Topics
+
+- [DevSecOps](../devsecops/) — pipeline security: SAST, dependency scanning, container scanning, policy-as-code
+- [Linux](../linux/) — system fundamentals underpinning all security controls
+- [Server Management](../server-management/) — firewall configuration, web server hardening
+- [Networking](../networking/) — SSH, TLS in context of protocols
+- [Orchestration](../orchestration/) — Kubernetes RBAC, network policies, pod security
