@@ -235,7 +235,12 @@ This repository is licensed under the [MIT License](LICENSE).
 
 ---
 
-## 🌟 Stargazers over time
+## 🌟 Star History
 
-
-[![Stargazers over time](https://starchart.cc/JawherKl/devops-guide.svg?variant=adaptive)](https://starchart.cc/JawherKl/devops-guide)
+<a href="https://www.star-history.com/?repos=jawherkl%2Fdevops-guide&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=jawherkl/devops-guide&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=jawherkl/devops-guide&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=jawherkl/devops-guide&type=date&legend=top-left" />
+ </picture>
+</a>
